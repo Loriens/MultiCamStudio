@@ -1,0 +1,93 @@
+#!/bin/bash
+#
+# Format and lint staged Swift sources before committing.
+#
+# Fully staged files are auto-formatted (swift-format) and auto-fixed (swiftlint
+# --fix), then re-staged. Files that also have unstaged changes are left alone —
+# rewriting them here would sweep those unstaged edits into the commit — but they
+# are still linted.
+#
+# The commit is blocked only by SwiftLint violations of `error` severity;
+# warnings are printed and let through. Missing tools warn rather than block, so
+# a fresh clone can still commit.
+
+set -euo pipefail
+
+if [[ "$(uname -m)" == arm64 ]]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Staged Swift files (added/copied/modified/renamed). NUL-separated so that
+# paths with spaces or newlines survive.
+staged=()
+while IFS= read -r -d '' file; do
+    staged+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.swift')
+
+if [ ${#staged[@]} -eq 0 ]; then
+    exit 0
+fi
+
+# Files with working-tree changes on top of what is staged.
+partial=()
+while IFS= read -r -d '' file; do
+    partial+=("$file")
+done < <(git diff --name-only -z -- '*.swift')
+
+is_partial() {
+    local candidate="$1" file
+    for file in ${partial[@]+"${partial[@]}"}; do
+        [ "$file" = "$candidate" ] && return 0
+    done
+    return 1
+}
+
+fixable=()
+for file in "${staged[@]}"; do
+    [ -f "$file" ] || continue          # skip paths deleted after staging
+    if is_partial "$file"; then
+        echo "pre-commit: $file has unstaged changes — linting without auto-fix."
+    else
+        fixable+=("$file")
+    fi
+done
+
+# --- Auto-format and auto-fix ------------------------------------------------
+
+if [ ${#fixable[@]} -gt 0 ]; then
+    if command -v swift-format &> /dev/null; then
+        swift-format format -i --configuration .swift-format "${fixable[@]}"
+    else
+        echo "warning: swift-format not installed, skipping formatting (brew install swift-format)"
+    fi
+
+    if command -v swiftlint &> /dev/null; then
+        swiftlint --fix --quiet --force-exclude --config .swiftlint.yml "${fixable[@]}" > /dev/null
+    fi
+
+    git add -- "${fixable[@]}"
+fi
+
+# --- Verify ------------------------------------------------------------------
+
+status=0
+
+if command -v swiftlint &> /dev/null; then
+    swiftlint lint --quiet --force-exclude --config .swiftlint.yml "${staged[@]}" || status=1
+else
+    echo "warning: SwiftLint not installed, skipping lint (brew install swiftlint)"
+fi
+
+if command -v swift-format &> /dev/null; then
+    swift-format lint --configuration .swift-format "${staged[@]}" || status=1
+fi
+
+if [ $status -ne 0 ]; then
+    echo
+    echo "pre-commit: fix the errors above, or re-run with --no-verify to bypass."
+fi
+
+exit $status

@@ -1,0 +1,113 @@
+# SwiftLint configuration file for the MultiCamStudio iOS app
+
+# Disable rules that don't fit the project style
+disabled_rules:
+  - force_cast # Project uses force casts in preview providers
+  - force_try # Used in initialization and preview contexts
+  - trailing_comma # Project doesn't use trailing commas
+  - multiple_closures_with_trailing_closure # Common in SwiftUI view builders
+  - redundant_type_annotation # Sometimes explicit types are preferred for clarity
+  - unused_closure_parameter
+  - unused_optional_binding
+  - identifier_name
+  - todo
+  - opening_brace
+  - indentation_width
+  # Deferred to swift-format (scripts/format.sh + git pre-commit hook own layout)
+  - closure_parameter_position
+
+# Enable additional rules
+opt_in_rules:
+  - array_init
+  - explicit_init
+  - first_where
+  - implicitly_unwrapped_optional
+  - joined_default_parameter
+  - last_where
+  - legacy_random
+  - let_var_whitespace
+  - literal_expression_end_indentation
+  - operator_usage_whitespace
+  - overridden_super_call
+  - prefer_self_type_over_type_of_self
+  - redundant_nil_coalescing
+  - unowned_variable_capture
+  - vertical_whitespace_closing_braces
+  - vertical_whitespace_opening_braces
+
+# Customized rule configurations
+line_length:
+    warning: 200
+    error: 300
+    ignores_urls: true
+    ignores_function_declarations: false
+    ignores_comments: true
+    ignores_interpolated_strings: false
+
+function_body_length:
+  warning: 150
+  error: 250
+
+type_body_length:
+  warning: 400
+  error: 600
+
+file_length:
+    warning: 800
+    error: 1000
+    ignore_comment_only_lines: true
+
+type_name:
+  max_length:
+    warning: 50
+    error: 60
+
+function_parameter_count:
+    warning: 7
+    error: 8
+
+nesting:
+  type_level:
+    warning: 3
+    error: 5
+
+cyclomatic_complexity:
+  warning: 12
+  error: 25
+
+trailing_whitespace:
+  ignores_empty_lines: true
+
+vertical_whitespace:
+  max_empty_lines: 2
+
+# Custom SwiftUI specific rules
+custom_rules:
+  view_modifier_spacing:
+    name: "View Modifier Spacing"
+    regex: '\.[\w\d]+\{\n[\s]*\n'
+    message: "Remove empty line after view modifier opening brace"
+    severity: warning
+
+  self_capture_in_blocks:
+        name: "Self Capture In Blocks"
+        message: "Self captured in block"
+        included: ".*.swift"
+        regex: '(?<!defer )\{ self\.'
+        match_kinds:
+          - identifier
+          - keyword
+        severity: error
+
+# Paths to ignore during linting
+excluded:
+  - Pods
+  - .build
+  - DerivedData
+  - fastlane
+  - Package.swift
+  - "**/*.generated.swift"
+  - "**/*Preview.swift"
+
+# Reporter type (xcode, json, csv, checkstyle, codeclimate, junit, html, emoji, sonarqube, markdown)
+reporter: "xcode"
