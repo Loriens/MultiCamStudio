@@ -28,15 +28,19 @@ final class MovieCapture {
         connection.videoRotationAngle = angle
     }
 
-    func startRecording() throws -> URL {
-        guard !output.isRecording else { throw CameraError.addOutputFailed }
-        guard let connection = output.connection(with: .video) else { throw CameraError.addOutputFailed }
+    func configureConnection() {
+        guard let connection = output.connection(with: .video) else { return }
         if output.availableVideoCodecTypes.contains(.hevc) {
             output.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.hevc], for: connection)
         }
         if connection.isVideoStabilizationSupported {
             connection.preferredVideoStabilizationMode = .auto
         }
+    }
+
+    func startRecording() throws -> URL {
+        guard !output.isRecording else { throw CameraError.addOutputFailed }
+        guard output.connection(with: .video) != nil else { throw CameraError.addOutputFailed }
         let url = URL.temporaryDirectory
             .appending(component: UUID().uuidString)
             .appendingPathExtension(for: .quickTimeMovie)

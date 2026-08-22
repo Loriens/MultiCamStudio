@@ -20,10 +20,13 @@ final class CameraPreviewLayerSource: CameraPreviewSource {
 
     var previewLayer: CALayer { videoPreviewLayer }
 
-    init(session: AVCaptureMultiCamSession, isMirrored: Bool) {
+    init(session: AVCaptureMultiCamSession, isMirrored: Bool, defersStart: Bool) {
         self.isMirrored = isMirrored
         videoPreviewLayer.videoGravity = .resizeAspectFill
         videoPreviewLayer.setSessionWithNoConnection(session)
+        guard defersStart, #available(iOS 26.0, *) else { return }
+        guard videoPreviewLayer.isDeferredStartSupported else { return }
+        videoPreviewLayer.isDeferredStartEnabled = true
     }
 
     func devicePoint(for point: CGPoint) -> CGPoint {

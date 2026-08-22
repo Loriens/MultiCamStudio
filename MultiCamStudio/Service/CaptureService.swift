@@ -40,8 +40,16 @@ actor CaptureService: CameraCaptureService {
     init() {
         let session = AVCaptureMultiCamSession()
         captureSession = session
-        backPreviewLayerSource = CameraPreviewLayerSource(session: session, isMirrored: false)
-        frontPreviewLayerSource = CameraPreviewLayerSource(session: session, isMirrored: true)
+        backPreviewLayerSource = CameraPreviewLayerSource(
+            session: session,
+            isMirrored: false,
+            defersStart: false
+        )
+        frontPreviewLayerSource = CameraPreviewLayerSource(
+            session: session,
+            isMirrored: true,
+            defersStart: true
+        )
         let (stream, continuation) = AsyncStream.makeStream(
             of: CaptureEvent.self,
             bufferingPolicy: .unbounded
@@ -58,8 +66,8 @@ actor CaptureService: CameraCaptureService {
 
         try await setUpSession(with: cameras)
         observeSessionNotifications()
-        await startRotationTracking()
         captureSession.startRunning()
+        await startRotationTracking()
         Task(priority: .background) { purgeOrphanedMovies() }
 
         if mode != captureMode {
@@ -91,6 +99,7 @@ actor CaptureService: CameraCaptureService {
                 for channel in channels {
                     guard let videoPort = channel.videoPort else { throw CameraError.addOutputFailed }
                     try add(channel.movieCapture.output, video: videoPort, audio: channel.audioPort)
+                    channel.movieCapture.configureConnection()
                     channel.movieCapture.setVideoRotationAngle(channel.captureRotationAngle)
                 }
             } catch {
@@ -161,6 +170,9 @@ actor CaptureService: CameraCaptureService {
             throw error
         }
         reduceCostIfNeeded()
+        for channel in channels {
+            channel.photoCapture.prepare()
+        }
         captureMode = .photo
         isSetUp = true
     }
@@ -218,7 +230,7 @@ actor CaptureService: CameraCaptureService {
         channel.videoPort = videoPort
 
         try add(channel.photoCapture.output, video: videoPort, audio: nil)
-        channel.photoCapture.prepare()
+        channel.photoCapture.deferStart()
     }
 
     private func add(

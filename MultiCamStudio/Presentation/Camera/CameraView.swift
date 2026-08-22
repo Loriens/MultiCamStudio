@@ -14,6 +14,8 @@ struct CameraView: View {
     private var scenePhase
     @ScaledMetric(relativeTo: .body)
     private var iconButtonSize = 34.0
+    @ScaledMetric(relativeTo: .caption)
+    private var modeRowHeight = 23.0
     @State
     private var focusPoint: CGPoint?
     @State
@@ -46,21 +48,27 @@ struct CameraView: View {
             Text("MultiCam Studio")
                 .scaledFont(size: 20, weight: .semibold, relativeTo: .title3)
             Spacer()
-            Button(action: camera.swapLeadingLens) {
-                Image(systemName: "arrow.triangle.2.circlepath.camera")
-                    .scaledFont(size: 14)
-                    .frame(width: iconButtonSize, height: iconButtonSize)
-                    .foregroundStyle(Theme.textMuted)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.radiusMedium)
-                            .strokeBorder(Theme.border, lineWidth: 1)
-                    )
+            if camera.status == .running {
+                swapLensButton
+                    .transition(.opacity.animation(.easeIn(duration: 0.3).delay(0.2)))
             }
-            .buttonStyle(PressableButtonStyle())
-            .disabled(camera.status != .running)
         }
         .padding(.horizontal, 22)
         .frame(minHeight: 48)
+    }
+
+    private var swapLensButton: some View {
+        Button(action: camera.swapLeadingLens) {
+            Image(systemName: "arrow.triangle.2.circlepath.camera")
+                .scaledFont(size: 14)
+                .frame(width: iconButtonSize, height: iconButtonSize)
+                .foregroundStyle(Theme.textMuted)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radiusMedium)
+                        .strokeBorder(Theme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(PressableButtonStyle())
     }
 
     private var preview: some View {
@@ -156,20 +164,13 @@ struct CameraView: View {
 
     private var controls: some View {
         VStack(spacing: Theme.space4) {
-            HStack(spacing: 0) {
-                modeButton(.photo)
-                Rectangle()
-                    .fill(Theme.border)
-                    .frame(width: 1)
-                modeButton(.video)
+            ZStack {
+                if camera.status == .running {
+                    modePicker
+                        .transition(.opacity.animation(.easeIn(duration: 0.3).delay(0.2)))
+                }
             }
-            .fixedSize()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMedium))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.radiusMedium)
-                    .strokeBorder(Theme.border, lineWidth: 1)
-            )
-            .opacity(camera.isBusy ? 0.5 : 1)
+            .frame(minHeight: modeRowHeight)
 
             ShutterButton(
                 mode: camera.mode,
@@ -180,6 +181,23 @@ struct CameraView: View {
             .disabled(camera.status != .running)
         }
         .padding(.vertical, 22)
+    }
+
+    private var modePicker: some View {
+        HStack(spacing: 0) {
+            modeButton(.photo)
+            Rectangle()
+                .fill(Theme.border)
+                .frame(width: 1)
+            modeButton(.video)
+        }
+        .fixedSize()
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMedium))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusMedium)
+                .strokeBorder(Theme.border, lineWidth: 1)
+        )
+        .opacity(camera.isBusy ? 0.5 : 1)
     }
 
     private func modeButton(_ mode: CaptureMode) -> some View {

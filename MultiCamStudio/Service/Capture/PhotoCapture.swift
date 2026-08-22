@@ -14,8 +14,19 @@ final class PhotoCapture {
 
     private var activeDelegate: PhotoCaptureDelegate?
 
+    func deferStart() {
+        guard #available(iOS 26.0, *), output.isDeferredStartSupported else { return }
+        output.isDeferredStartEnabled = true
+    }
+
     func prepare() {
         output.isAutoDeferredPhotoDeliveryEnabled = false
+        if output.isResponsiveCaptureSupported {
+            output.isResponsiveCaptureEnabled = true
+        }
+        if output.isFastCapturePrioritizationSupported {
+            output.isFastCapturePrioritizationEnabled = true
+        }
     }
 
     func setVideoRotationAngle(_ angle: CGFloat) {
