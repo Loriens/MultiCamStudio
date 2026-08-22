@@ -8,16 +8,16 @@
 import SwiftUI
 
 struct CaptureCell: View {
-    let capture: CapturePlaceholder
+    let item: FeedItem
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.space1) {
             PlateMat {
-                PlaceholderPlate()
+                FileImage(url: posterURL, maxPixelSize: 512)
                     .aspectRatio(3.0 / 4.0, contentMode: .fit)
             }
             .overlay(alignment: .bottomTrailing) {
-                if let durationLabel = capture.durationLabel {
+                if let durationLabel = item.capture.durationLabel {
                     Text("▶ \(durationLabel)")
                         .scaledFont(size: 9.5, relativeTo: .caption2)
                         .tracking(0.76)
@@ -30,13 +30,17 @@ struct CaptureCell: View {
             }
 
             HStack {
-                Text(capture.plate)
+                Text(item.plateTitle)
                 Spacer()
-                Text("REAR")
+                Text(item.capture.back.lens.title.uppercased())
                     .tracking(1.1)
             }
             .scaledFont(size: 11, relativeTo: .caption)
             .foregroundStyle(Theme.textSubdued)
         }
+    }
+
+    private var posterURL: URL {
+        item.capture.back.posterURL ?? item.capture.back.url
     }
 }

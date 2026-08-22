@@ -9,9 +9,19 @@ import SwiftUI
 
 struct RootTabView: View {
     @State
-    private var camera = CameraModel(captureService: CaptureService())
+    private var camera: CameraModel
     @State
-    private var feedViewModel = FeedViewModel()
+    private var feedViewModel: FeedViewModel
+
+    init() {
+        let captureStore = CaptureRepository(posterService: MoviePosterGenerator())
+        _camera = State(
+            initialValue: CameraModel(captureService: CaptureService(), captureStore: captureStore)
+        )
+        _feedViewModel = State(
+            initialValue: FeedViewModel(captureStore: captureStore, playback: MoviePlayerLayerSource())
+        )
+    }
 
     var body: some View {
         TabView {

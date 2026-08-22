@@ -107,7 +107,11 @@ actor CaptureService: CameraCaptureService {
         try? lockAndFocus(device, at: devicePoint)
     }
 
-    func capturePhoto() async throws -> Data {
+    func activeLens() -> CaptureLens {
+        activeVideoInput?.device.position == .front ? .front : .back
+    }
+
+    func capturePhoto() async throws -> CapturedPhoto {
         try await photoCapture.capturePhoto()
     }
 

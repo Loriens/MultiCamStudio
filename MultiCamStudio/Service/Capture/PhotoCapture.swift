@@ -24,19 +24,21 @@ nonisolated final class PhotoCapture {
         connection.videoRotationAngle = angle
     }
 
-    func capturePhoto() async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            let delegate = PhotoCaptureDelegate(continuation: continuation)
+    func capturePhoto() async throws -> CapturedPhoto {
+        let usesHEVC = output.availablePhotoCodecTypes.contains(.hevc)
+        return try await withCheckedThrowingContinuation { continuation in
+            let delegate = PhotoCaptureDelegate(
+                continuation: continuation,
+                fileExtension: usesHEVC ? "heic" : "jpg"
+            )
             activeDelegate = delegate
-            output.capturePhoto(with: makeSettings(), delegate: delegate)
+            output.capturePhoto(with: makeSettings(usesHEVC: usesHEVC), delegate: delegate)
         }
     }
 
-    private func makeSettings() -> AVCapturePhotoSettings {
-        let settings =
-            output.availablePhotoCodecTypes.contains(.hevc)
+    private func makeSettings(usesHEVC: Bool) -> AVCapturePhotoSettings {
+        usesHEVC
             ? AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
             : AVCapturePhotoSettings()
-        return settings
     }
 }

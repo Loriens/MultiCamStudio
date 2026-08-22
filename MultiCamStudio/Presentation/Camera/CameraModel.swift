@@ -24,13 +24,15 @@ final class CameraModel {
     var previewSource: CameraPreviewSource { captureService.previewSource }
 
     private let captureService: any CameraCaptureService
+    private let captureStore: any CaptureStore
     private var eventTask: Task<Void, Never>?
     private var startTask: Task<Void, Never>?
     private var focusTask: Task<Void, Never>?
     private var reviewTask: Task<Void, Never>?
 
-    init(captureService: any CameraCaptureService) {
+    init(captureService: any CameraCaptureService, captureStore: any CaptureStore) {
         self.captureService = captureService
+        self.captureStore = captureStore
     }
 
     func start() async {
@@ -114,8 +116,9 @@ final class CameraModel {
             guard let self else { return }
             defer { isBusy = false }
             do {
-                let data = try await captureService.capturePhoto()
-                let thumbnail = await Self.makeThumbnail(from: data)
+                let photo = try await captureService.capturePhoto()
+                try await captureStore.savePhotoCapture(back: photo, lens: captureService.activeLens())
+                let thumbnail = await Self.makeThumbnail(from: photo.data)
                 show(thumbnail.map(CaptureReview.photo) ?? .failure)
             } catch {
                 show(.failure)
@@ -133,6 +136,7 @@ final class CameraModel {
                 if isRecording {
                     let movie = try await captureService.stopRecording()
                     isRecording = false
+                    try await captureStore.saveMovieCapture(back: movie, lens: captureService.activeLens())
                     show(.movie(duration: movie.duration))
                 } else {
                     try await captureService.startRecording()

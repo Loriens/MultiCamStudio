@@ -15,8 +15,9 @@ nonisolated protocol CameraCaptureService: Actor {
     func start(in mode: CaptureMode) async throws
     func setCaptureMode(_ mode: CaptureMode) async throws
     func selectNextCamera() async throws
+    func activeLens() async -> CaptureLens
     func focusAndExpose(at devicePoint: CGPoint) async
-    func capturePhoto() async throws -> Data
+    func capturePhoto() async throws -> CapturedPhoto
     func startRecording() async throws
     func stopRecording() async throws -> CapturedMovie
 }

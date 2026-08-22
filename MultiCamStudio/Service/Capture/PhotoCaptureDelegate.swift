@@ -9,11 +9,13 @@ import AVFoundation
 import Foundation
 
 nonisolated final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
-    private let continuation: CheckedContinuation<Data, Error>
+    private let continuation: CheckedContinuation<CapturedPhoto, Error>
+    private let fileExtension: String
     private var photoData: Data?
 
-    init(continuation: CheckedContinuation<Data, Error>) {
+    init(continuation: CheckedContinuation<CapturedPhoto, Error>, fileExtension: String) {
         self.continuation = continuation
+        self.fileExtension = fileExtension
     }
 
     func photoOutput(
@@ -37,6 +39,6 @@ nonisolated final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDel
             continuation.resume(throwing: CameraError.noPhotoData)
             return
         }
-        continuation.resume(returning: photoData)
+        continuation.resume(returning: CapturedPhoto(data: photoData, fileExtension: fileExtension))
     }
 }

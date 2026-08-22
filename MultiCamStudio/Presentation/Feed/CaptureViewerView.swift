@@ -25,11 +25,15 @@ struct CaptureViewerView: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.surface.ignoresSafeArea())
-        .onChange(of: viewModel.selection) { isFrontLeading = false }
+        .onChange(of: viewModel.selection, initial: true) {
+            isFrontLeading = false
+            viewModel.showPlayback()
+        }
+        .onDisappear { viewModel.stopPlayback() }
     }
 
-    private var capture: CapturePlaceholder? {
-        viewModel.selection
+    private var capture: Capture? {
+        viewModel.selection?.capture
     }
 
     private var header: some View {
@@ -49,7 +53,7 @@ struct CaptureViewerView: View {
             .buttonStyle(.plain)
 
             Spacer()
-            Text("\(capture?.plate ?? "") · \(capture?.kindLabel ?? "")".uppercased())
+            Text(title.uppercased())
                 .scaledFont(size: 10.5, relativeTo: .caption)
                 .tracking(1.68)
                 .foregroundStyle(Theme.textSubdued)
@@ -62,42 +66,76 @@ struct CaptureViewerView: View {
         .frame(minHeight: 48)
     }
 
+    private var title: String {
+        let plateTitle = viewModel.selection?.plateTitle ?? ""
+        return "\(plateTitle) · \(capture?.kindLabel ?? "")"
+    }
+
     private var plate: some View {
         PlateMat(inset: 6) {
-            PlaceholderPlate(caption: isFrontLeading ? "FRONT" : "REAR")
+            media(isLeading: true)
                 .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 .overlay(alignment: .topLeading) { inset }
         }
         .padding(.horizontal, 22)
     }
 
+    @ViewBuilder
     private var inset: some View {
-        Button {
-            isFrontLeading.toggle()
-        } label: {
-            PlaceholderPlate(caption: isFrontLeading ? "REAR" : "FRONT")
-                .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                .frame(width: 80)
-                .padding(4)
-                .background(Theme.raised)
-                .overlay(Rectangle().strokeBorder(Theme.text.opacity(0.28), lineWidth: 1))
+        if hasFrontMedia {
+            Button {
+                isFrontLeading.toggle()
+            } label: {
+                insetPlate
+            }
+            .buttonStyle(.plain)
+            .padding(10)
+        } else {
+            insetPlate
+                .padding(10)
         }
-        .buttonStyle(.plain)
-        .padding(10)
+    }
+
+    private var insetPlate: some View {
+        media(isLeading: false)
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .frame(width: 80)
+            .padding(4)
+            .background(Theme.raised)
+            .overlay(Rectangle().strokeBorder(Theme.text.opacity(0.28), lineWidth: 1))
+    }
+
+    private var hasFrontMedia: Bool {
+        capture?.front != nil
+    }
+
+    @ViewBuilder
+    private func media(isLeading: Bool) -> some View {
+        let showsFront = isLeading == isFrontLeading
+        if showsFront {
+            FileImage(url: capture?.front?.url, maxPixelSize: 2048, caption: "FRONT")
+        } else if capture?.isVideo == true {
+            MoviePlayerView(playerLayer: viewModel.playerLayer)
+        } else {
+            FileImage(url: capture?.back.url, maxPixelSize: 2048, caption: "REAR")
+        }
     }
 
     private var footer: some View {
         VStack(spacing: Theme.space3) {
-            Text("Tap the inset to change which camera leads.")
-                .scaledFont(size: 12.5)
-                .italic()
-                .foregroundStyle(Theme.textSubdued)
-                .multilineTextAlignment(.center)
+            if hasFrontMedia {
+                Text("Tap the inset to change which camera leads.")
+                    .scaledFont(size: 12.5)
+                    .italic()
+                    .foregroundStyle(Theme.textSubdued)
+                    .multilineTextAlignment(.center)
+            }
 
             if capture?.isVideo == true {
                 Button {
+                    viewModel.replay()
                 } label: {
-                    Text("Replay both")
+                    Text("Replay")
                         .scaledFont(size: 13.5, weight: .semibold)
                         .tracking(1.62)
                         .textCase(.uppercase)

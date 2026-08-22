@@ -53,11 +53,11 @@ struct FeedView: View {
     private var grid: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: Theme.space4) {
-                ForEach(viewModel.captures) { capture in
+                ForEach(viewModel.captures) { item in
                     Button {
-                        viewModel.selection = capture
+                        viewModel.selection = item
                     } label: {
-                        CaptureCell(capture: capture)
+                        CaptureCell(item: item)
                     }
                     .buttonStyle(.plain)
                 }
