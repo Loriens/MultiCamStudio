@@ -17,13 +17,33 @@ final class AppDependencies {
     let backPlayback: any MoviePlaybackSource
     let frontPlayback: any MoviePlaybackSource
 
-    init(container: ModelContainer?) {
-        captureService = CaptureService()
+    static func make() async -> AppDependencies {
+        async let container = ModelContainerLoader().makeContainer()
+        await Task.yield()
+        let captureService = CaptureService()
+        await Task.yield()
+        let backPlayback = MoviePlayerLayerSource()
+        let frontPlayback = MoviePlayerLayerSource()
+        return AppDependencies(
+            captureService: captureService,
+            backPlayback: backPlayback,
+            frontPlayback: frontPlayback,
+            container: await container
+        )
+    }
+
+    private init(
+        captureService: any CameraCaptureService,
+        backPlayback: any MoviePlaybackSource,
+        frontPlayback: any MoviePlaybackSource,
+        container: ModelContainer?
+    ) {
+        self.captureService = captureService
+        self.backPlayback = backPlayback
+        self.frontPlayback = frontPlayback
         captureStore = CaptureRepository(
             posterService: MoviePosterGenerator(),
             container: container
         )
-        backPlayback = MoviePlayerLayerSource()
-        frontPlayback = MoviePlayerLayerSource()
     }
 }

@@ -41,5 +41,6 @@ struct RootTabView: View {
                 .toolbarBackground(.visible, for: .tabBar)
         }
         .tint(Theme.text)
+        .task { await feedViewModel.start() }
     }
 }

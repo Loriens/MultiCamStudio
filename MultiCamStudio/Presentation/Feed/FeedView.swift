@@ -12,8 +12,8 @@ struct FeedView: View {
     var viewModel: FeedViewModel
 
     private let columns = [
-        GridItem(.flexible(), spacing: Theme.space4, alignment: .top),
-        GridItem(.flexible(), spacing: Theme.space4, alignment: .top),
+        GridItem(.flexible(), spacing: Theme.space4),
+        GridItem(.flexible(), spacing: Theme.space4),
     ]
 
     var body: some View {
@@ -21,14 +21,14 @@ struct FeedView: View {
             header
 
             if !viewModel.isLoaded {
-                Spacer()
+                LoadingIndicator()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.captures.isEmpty {
                 emptySheet
             } else {
                 grid
             }
         }
-        .task { await viewModel.start() }
         .foregroundStyle(Theme.text)
         .background(Theme.surface.ignoresSafeArea())
         .fullScreenCover(isPresented: $viewModel.isViewerPresented) {
@@ -37,16 +37,9 @@ struct FeedView: View {
     }
 
     private var header: some View {
-        VStack(spacing: Theme.space3) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Captures")
-                    .scaledFont(size: 32, relativeTo: .title)
-                Spacer()
-                Text(viewModel.countLabel.uppercased())
-                    .scaledFont(size: 10.5, relativeTo: .caption)
-                    .tracking(1.47)
-                    .foregroundStyle(Theme.textSubdued)
-            }
+        VStack(alignment: .leading, spacing: Theme.space3) {
+            Text("Feed")
+                .scaledFont(size: 32, relativeTo: .title)
             Hairline()
         }
         .padding(.horizontal, Theme.space6)
@@ -56,11 +49,11 @@ struct FeedView: View {
     private var grid: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: Theme.space4) {
-                ForEach(viewModel.captures) { item in
+                ForEach(viewModel.captures) { capture in
                     Button {
-                        viewModel.selection = item
+                        viewModel.selection = capture
                     } label: {
-                        CaptureCell(item: item)
+                        CaptureCell(capture: capture)
                     }
                     .buttonStyle(.plain)
                 }

@@ -11,5 +11,6 @@ enum CaptureEvent: Sendable, Equatable {
     case interrupted
     case resumed
     case recordingDiscarded
+    case shutterFired
     case failed
 }

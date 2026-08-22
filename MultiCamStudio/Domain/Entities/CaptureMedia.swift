@@ -11,5 +11,6 @@ struct CaptureMedia: Hashable, Sendable {
     let lens: CaptureLens
     let url: URL
     let posterURL: URL?
+    let startOffset: TimeInterval
     let duration: TimeInterval?
 }

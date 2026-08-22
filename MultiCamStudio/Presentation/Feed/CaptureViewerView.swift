@@ -42,7 +42,7 @@ struct CaptureViewerView: View {
     }
 
     private var capture: Capture? {
-        viewModel.selection?.capture
+        viewModel.selection
     }
 
     private var header: some View {
@@ -62,22 +62,31 @@ struct CaptureViewerView: View {
             .buttonStyle(.plain)
 
             Spacer()
-            Text(title.uppercased())
+            Text((capture?.kindLabel ?? "").uppercased())
                 .scaledFont(size: 10.5, relativeTo: .caption)
                 .tracking(1.68)
                 .foregroundStyle(Theme.textSubdued)
             Spacer()
 
-            Color.clear
-                .frame(width: iconButtonSize, height: iconButtonSize)
+            if mediaURLs.isEmpty {
+                Color.clear
+                    .frame(width: iconButtonSize, height: iconButtonSize)
+            } else {
+                ShareLink(items: mediaURLs) {
+                    Image(systemName: "square.and.arrow.up")
+                        .scaledFont(size: 14)
+                        .frame(width: iconButtonSize, height: iconButtonSize)
+                        .foregroundStyle(Theme.textMuted)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radiusMedium)
+                                .strokeBorder(Theme.border, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 22)
         .frame(minHeight: 48)
-    }
-
-    private var title: String {
-        let plateTitle = viewModel.selection?.plateTitle ?? ""
-        return "\(plateTitle) · \(capture?.kindLabel ?? "")"
     }
 
     private var plate: some View {
@@ -133,6 +142,11 @@ struct CaptureViewerView: View {
 
     private var hasFrontVideo: Bool {
         capture?.front?.duration != nil
+    }
+
+    private var mediaURLs: [URL] {
+        guard let capture else { return [] }
+        return [capture.back.url] + (capture.front.map { [$0.url] } ?? [])
     }
 
     private var footer: some View {

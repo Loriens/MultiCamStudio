@@ -11,6 +11,8 @@ import CoreMedia
 import Foundation
 
 actor CaptureService: CameraCaptureService {
+    private static let interShotDelay = Duration.seconds(1.5)
+
     nonisolated let events: AsyncStream<CaptureEvent>
 
     nonisolated var backPreviewSource: CameraPreviewSource { backPreviewLayerSource }
@@ -106,7 +108,10 @@ actor CaptureService: CameraCaptureService {
     }
 
     func capturePhoto() async throws -> CapturedPhotoPair {
+        eventContinuation.yield(.shutterFired)
         let back = try await backChannel.photoCapture.capturePhoto()
+        try await Task.sleep(for: Self.interShotDelay)
+        eventContinuation.yield(.shutterFired)
         let front = try? await frontChannel.photoCapture.capturePhoto()
         return CapturedPhotoPair(back: back, front: front)
     }
@@ -121,13 +126,23 @@ actor CaptureService: CameraCaptureService {
     }
 
     func stopRecording() async throws -> CapturedMoviePair {
-        let backDuration = try backChannel.movieCapture.stop()
-        let frontDuration = try? frontChannel.movieCapture.stop()
+        let backElapsed = backChannel.movieCapture.recordedDuration
+        let frontElapsed = frontChannel.movieCapture.isRecording ? frontChannel.movieCapture.recordedDuration : nil
+        let synchronizedDuration = min(backElapsed, frontElapsed ?? backElapsed)
 
-        let back = try await backChannel.movieCapture.finishedMovie(duration: backDuration)
+        try backChannel.movieCapture.stop()
+        try? frontChannel.movieCapture.stop()
+
+        let back = try await backChannel.movieCapture.finishedMovie(
+            startOffset: backElapsed - synchronizedDuration,
+            duration: synchronizedDuration
+        )
         var front: CapturedMovie?
-        if let frontDuration {
-            front = try? await frontChannel.movieCapture.finishedMovie(duration: frontDuration)
+        if let frontElapsed {
+            front = try? await frontChannel.movieCapture.finishedMovie(
+                startOffset: frontElapsed - synchronizedDuration,
+                duration: synchronizedDuration
+            )
         }
         return CapturedMoviePair(back: back, front: front)
     }

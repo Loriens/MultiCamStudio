@@ -9,5 +9,6 @@ import Foundation
 
 struct CapturedMovie: Sendable {
     let url: URL
+    let startOffset: TimeInterval
     let duration: TimeInterval
 }

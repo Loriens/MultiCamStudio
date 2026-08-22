@@ -11,10 +11,11 @@ import QuartzCore
 @MainActor
 protocol MoviePlaybackSource: AnyObject {
     var playerLayer: CALayer { get }
+    var elapsed: TimeInterval? { get }
 
-    func play(_ url: URL)
-    func replay()
+    func load(_ url: URL, from startOffset: TimeInterval, for duration: TimeInterval)
+    func prepare(at elapsed: TimeInterval) async
+    func start(at hostTime: CFTimeInterval)
     func pause()
-    func resume()
     func stop()
 }

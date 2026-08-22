@@ -13,13 +13,17 @@ final class CaptureRepository: CaptureStore {
     nonisolated let changes: AsyncStream<[Capture]>
 
     private let container: ModelContainer?
-    private let mediaFileStore = MediaFileStore()
+    private let mediaFileStore: MediaFileStore
+    private let reader: CaptureReader?
     private let posterService: any MoviePosterService
     private nonisolated let changeContinuation: AsyncStream<[Capture]>.Continuation
 
     init(posterService: any MoviePosterService, container: ModelContainer?) {
         self.posterService = posterService
         self.container = container
+        let store = MediaFileStore()
+        mediaFileStore = store
+        reader = container.map { CaptureReader(container: $0, mediaFileStore: store) }
         let (stream, continuation) = AsyncStream.makeStream(
             of: [Capture].self,
             bufferingPolicy: .bufferingNewest(1)
@@ -28,13 +32,9 @@ final class CaptureRepository: CaptureStore {
         changeContinuation = continuation
     }
 
-    func loadCaptures() throws -> [Capture] {
-        guard let context = container?.mainContext else { throw CaptureStoreError.storeUnavailable }
-        var descriptor = FetchDescriptor<CaptureRecord>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        descriptor.relationshipKeyPathsForPrefetching = [\.back, \.front]
-        return try context.fetch(descriptor).compactMap(capture(from:))
+    func loadCaptures() async throws -> [Capture] {
+        guard let reader else { throw CaptureStoreError.storeUnavailable }
+        return try await reader.captures()
     }
 
     func savePhotoCapture(_ photos: CapturedPhotoPair) async throws {
@@ -46,11 +46,12 @@ final class CaptureRepository: CaptureStore {
         if let front = photos.front {
             frontPath = try? await mediaFileStore.store(front.data, fileExtension: front.fileExtension)
         }
-        try insert(
+        try await insert(
             back: BackMediaRecord(
                 lensRawValue: CaptureLens.back.rawValue,
                 relativePath: backPath,
                 posterRelativePath: nil,
+                startOffset: 0,
                 duration: nil
             ),
             front: frontPath.map { path in
@@ -58,6 +59,7 @@ final class CaptureRepository: CaptureStore {
                     lensRawValue: CaptureLens.front.rawValue,
                     relativePath: path,
                     posterRelativePath: nil,
+                    startOffset: 0,
                     duration: nil
                 )
             }
@@ -70,11 +72,12 @@ final class CaptureRepository: CaptureStore {
         if let movie = movies.front {
             front = try? await adopt(movie)
         }
-        try insert(
+        try await insert(
             back: BackMediaRecord(
                 lensRawValue: CaptureLens.back.rawValue,
                 relativePath: back.path,
                 posterRelativePath: back.posterPath,
+                startOffset: movies.back.startOffset,
                 duration: movies.back.duration
             ),
             front: front.map { stored in
@@ -82,6 +85,7 @@ final class CaptureRepository: CaptureStore {
                     lensRawValue: CaptureLens.front.rawValue,
                     relativePath: stored.path,
                     posterRelativePath: stored.posterPath,
+                    startOffset: movies.front?.startOffset ?? 0,
                     duration: movies.front?.duration
                 )
             }
@@ -98,8 +102,10 @@ final class CaptureRepository: CaptureStore {
         return (path, posterPath)
     }
 
-    private func insert(back: BackMediaRecord, front: FrontMediaRecord?) throws {
-        guard let context = container?.mainContext else { throw CaptureStoreError.storeUnavailable }
+    private func insert(back: BackMediaRecord, front: FrontMediaRecord?) async throws {
+        guard let context = container?.mainContext, let reader else {
+            throw CaptureStoreError.storeUnavailable
+        }
         let record = CaptureRecord(id: UUID(), createdAt: .now)
         context.insert(record)
         context.insert(back)
@@ -109,42 +115,7 @@ final class CaptureRepository: CaptureStore {
             record.front = front
         }
         try context.save()
-        changeContinuation.yield(try loadCaptures())
-    }
-
-    private func capture(from record: CaptureRecord) -> Capture? {
-        guard let back = record.back else { return nil }
-        return Capture(
-            id: record.id,
-            createdAt: record.createdAt,
-            back: media(
-                lensRawValue: back.lensRawValue,
-                path: back.relativePath,
-                poster: back.posterRelativePath,
-                duration: back.duration
-            ),
-            front: record.front.map { front in
-                media(
-                    lensRawValue: front.lensRawValue,
-                    path: front.relativePath,
-                    poster: front.posterRelativePath,
-                    duration: front.duration
-                )
-            }
-        )
-    }
-
-    private func media(
-        lensRawValue: String,
-        path: String,
-        poster: String?,
-        duration: TimeInterval?
-    ) -> CaptureMedia {
-        CaptureMedia(
-            lens: CaptureLens(rawValue: lensRawValue) ?? .back,
-            url: mediaFileStore.url(forRelativePath: path),
-            posterURL: poster.map(mediaFileStore.url(forRelativePath:)),
-            duration: duration
-        )
+        let refreshed = try await reader.captures()
+        changeContinuation.yield(refreshed)
     }
 }

@@ -12,10 +12,12 @@ import QuartzCore
 @MainActor
 @Observable
 final class FeedViewModel {
-    private(set) var captures: [FeedItem] = []
+    private(set) var captures: [Capture] = []
     private(set) var isLoaded = false
     private(set) var isStoreUnavailable = false
-    var selection: FeedItem?
+    var selection: Capture?
+
+    private static let startLeadTime = 0.1
 
     var backPlayerLayer: CALayer { backPlayback.playerLayer }
 
@@ -25,6 +27,7 @@ final class FeedViewModel {
     private let backPlayback: any MoviePlaybackSource
     private let frontPlayback: any MoviePlaybackSource
     private var storeTask: Task<Void, Never>?
+    private var playbackTask: Task<Void, Never>?
     private var hasStarted = false
 
     init(
@@ -49,15 +52,6 @@ final class FeedViewModel {
         }
     }
 
-    var countLabel: String {
-        guard isLoaded else { return "" }
-        return switch captures.count {
-        case 0: "None yet"
-        case 1: "1 plate"
-        default: "\(captures.count) plates"
-        }
-    }
-
     var isViewerPresented: Bool {
         get { selection != nil }
         set { if !newValue { selection = nil } }
@@ -72,36 +66,51 @@ final class FeedViewModel {
     }
 
     func showPlayback() {
-        guard let capture = selection?.capture, capture.isVideo else {
+        guard let capture = selection, let backDuration = capture.back.duration else {
             stopPlayback()
             return
         }
-        backPlayback.play(capture.back.url)
-        if let front = capture.front, front.duration != nil {
-            frontPlayback.play(front.url)
+        backPlayback.load(capture.back.url, from: capture.back.startOffset, for: backDuration)
+        if let front = capture.front, let frontDuration = front.duration {
+            frontPlayback.load(front.url, from: front.startOffset, for: frontDuration)
         } else {
             frontPlayback.stop()
         }
+        play(from: 0)
     }
 
     func replay() {
-        backPlayback.replay()
-        frontPlayback.replay()
+        play(from: 0)
     }
 
     func pausePlayback() {
+        playbackTask?.cancel()
         backPlayback.pause()
         frontPlayback.pause()
     }
 
     func resumePlayback() {
-        backPlayback.resume()
-        frontPlayback.resume()
+        guard let elapsed = [backPlayback.elapsed, frontPlayback.elapsed].compactMap({ $0 }).min() else { return }
+        play(from: elapsed)
     }
 
     func stopPlayback() {
+        playbackTask?.cancel()
         backPlayback.stop()
         frontPlayback.stop()
+    }
+
+    private func play(from elapsed: TimeInterval) {
+        playbackTask?.cancel()
+        playbackTask = Task { [weak self] in
+            guard let self else { return }
+            await backPlayback.prepare(at: elapsed)
+            await frontPlayback.prepare(at: elapsed)
+            guard !Task.isCancelled else { return }
+            let hostTime = CACurrentMediaTime() + Self.startLeadTime
+            backPlayback.start(at: hostTime)
+            frontPlayback.start(at: hostTime)
+        }
     }
 
     private func load() async {
@@ -114,10 +123,7 @@ final class FeedViewModel {
     }
 
     private func apply(_ newCaptures: [Capture]) {
-        let count = newCaptures.count
-        captures = newCaptures.enumerated().map { index, capture in
-            FeedItem(capture: capture, plateTitle: PlateNumber.title(for: count - index))
-        }
+        captures = newCaptures
         guard let selection else { return }
         self.selection = captures.first { $0.id == selection.id }
     }

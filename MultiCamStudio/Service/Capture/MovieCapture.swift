@@ -20,6 +20,8 @@ final class MovieCapture {
 
     var hasPendingRecording: Bool { delegate != nil }
 
+    var recordedDuration: TimeInterval { output.recordedDuration.seconds }
+
     func setVideoRotationAngle(_ angle: CGFloat) {
         guard let connection = output.connection(with: .video) else { return }
         guard connection.isVideoRotationAngleSupported(angle) else { return }
@@ -44,11 +46,9 @@ final class MovieCapture {
         return url
     }
 
-    func stop() throws -> TimeInterval {
+    func stop() throws {
         guard delegate != nil, output.isRecording else { throw CameraError.notRecording }
-        let duration = output.recordedDuration.seconds
         output.stopRecording()
-        return duration
     }
 
     func discard() async {
@@ -60,12 +60,12 @@ final class MovieCapture {
         for await _ in recordingDelegate.results { break }
     }
 
-    func finishedMovie(duration: TimeInterval) async throws -> CapturedMovie {
+    func finishedMovie(startOffset: TimeInterval, duration: TimeInterval) async throws -> CapturedMovie {
         guard let recordingDelegate = delegate else { throw CameraError.notRecording }
         defer { delegate = nil }
         for await result in recordingDelegate.results {
             let url = try result.get()
-            return CapturedMovie(url: url, duration: duration)
+            return CapturedMovie(url: url, startOffset: startOffset, duration: duration)
         }
         throw CameraError.recordingFailed
     }

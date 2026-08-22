@@ -111,7 +111,6 @@ final class CameraModel {
     private func capturePhoto() {
         guard !isBusy else { return }
         isBusy = true
-        flashCount += 1
         Task { [weak self] in
             guard let self else { return }
             defer { isBusy = false }
@@ -150,6 +149,7 @@ final class CameraModel {
                 case .interrupted: status = .interrupted
                 case .resumed: status = .running
                 case .recordingDiscarded: isRecording = false
+                case .shutterFired: flashCount += 1
                 case .failed: status = .failed
                 }
             }

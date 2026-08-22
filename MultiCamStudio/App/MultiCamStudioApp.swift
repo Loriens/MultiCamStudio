@@ -24,8 +24,7 @@ struct MultiCamStudioApp: App {
             .preferredColorScheme(.dark)
             .task {
                 guard dependencies == nil else { return }
-                let container = await ModelContainerLoader().makeContainer()
-                dependencies = AppDependencies(container: container)
+                dependencies = await AppDependencies.make()
             }
         }
     }
