@@ -37,15 +37,17 @@ final class MoviePlayerLayerSource: MoviePlaybackSource {
     }
 
     func prepare(at elapsed: TimeInterval) async {
-        guard player.currentItem != nil else { return }
+        guard let item = player.currentItem else { return }
         player.pause()
+        guard await isReadyToPlay(item) else { return }
         let time = startTime + CMTime(seconds: elapsed, preferredTimescale: 600)
         await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        guard player.status == .readyToPlay else { return }
         _ = await player.preroll(atRate: 1)
     }
 
     func start(at hostTime: CFTimeInterval) {
-        guard player.currentItem != nil else { return }
+        guard player.currentItem != nil, player.status == .readyToPlay else { return }
         player.setRate(
             1,
             time: .invalid,
@@ -61,5 +63,18 @@ final class MoviePlayerLayerSource: MoviePlaybackSource {
         player.pause()
         player.replaceCurrentItem(with: nil)
         startTime = .zero
+    }
+
+    private func isReadyToPlay(_ item: AVPlayerItem) async -> Bool {
+        if item.status != .unknown { return item.status == .readyToPlay }
+        let (stream, continuation) = AsyncStream.makeStream(of: AVPlayerItem.Status.self)
+        let token = item.observe(\.status, options: [.initial, .new]) { current, _ in
+            continuation.yield(current.status)
+        }
+        defer { token.invalidate() }
+        for await status in stream where status != .unknown {
+            return status == .readyToPlay
+        }
+        return false
     }
 }

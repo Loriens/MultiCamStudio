@@ -155,7 +155,7 @@ struct CaptureViewerView: View {
                 Button {
                     viewModel.replay()
                 } label: {
-                    Text(hasFrontVideo ? "Replay both" : "Replay")
+                    Text("Replay")
                         .scaledFont(size: 13.5, weight: .semibold)
                         .tracking(1.62)
                         .textCase(.uppercase)

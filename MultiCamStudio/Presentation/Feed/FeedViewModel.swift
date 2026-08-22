@@ -106,6 +106,7 @@ final class FeedViewModel {
         playbackTask = Task { [weak self] in
             guard let self else { return }
             await backPlayback.prepare(at: elapsed)
+            guard !Task.isCancelled else { return }
             await frontPlayback.prepare(at: elapsed)
             guard !Task.isCancelled else { return }
             let hostTime = CACurrentMediaTime() + Self.startLeadTime
