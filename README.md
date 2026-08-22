@@ -23,9 +23,7 @@ touched.
 brew install swiftlint swift-format
 ```
 
-`scripts/lint.sh` and `scripts/format.sh` run them. A pre-commit hook lives in `.githooks/`; link it
-with `ln -s ../../.githooks/pre-commit .git/hooks/pre-commit`.
-
 ## Demo
 
-Recording and Loom link — coming soon.
+- [`recording.MP4`](recording.MP4)
+- [Project walkthrough on Loom](https://www.loom.com/share/936208edc9b84d76bb681ed567ebbf2d)
