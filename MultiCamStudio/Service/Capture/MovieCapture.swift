@@ -11,12 +11,14 @@ import CoreMedia
 import Foundation
 import UniformTypeIdentifiers
 
-nonisolated final class MovieCapture {
+final class MovieCapture {
     let output = AVCaptureMovieFileOutput()
 
     private var delegate: MovieRecordingDelegate?
 
     var isRecording: Bool { output.isRecording }
+
+    var hasPendingRecording: Bool { delegate != nil }
 
     func setVideoRotationAngle(_ angle: CGFloat) {
         guard let connection = output.connection(with: .video) else { return }
@@ -42,11 +44,25 @@ nonisolated final class MovieCapture {
         return url
     }
 
-    func stopRecording() async throws -> CapturedMovie {
-        guard let recordingDelegate = delegate, output.isRecording else { throw CameraError.notRecording }
+    func stop() throws -> TimeInterval {
+        guard delegate != nil, output.isRecording else { throw CameraError.notRecording }
         let duration = output.recordedDuration.seconds
-        defer { delegate = nil }
         output.stopRecording()
+        return duration
+    }
+
+    func discard() async {
+        guard let recordingDelegate = delegate else { return }
+        defer { delegate = nil }
+        if output.isRecording {
+            output.stopRecording()
+        }
+        for await _ in recordingDelegate.results { break }
+    }
+
+    func finishedMovie(duration: TimeInterval) async throws -> CapturedMovie {
+        guard let recordingDelegate = delegate else { throw CameraError.notRecording }
+        defer { delegate = nil }
         for await result in recordingDelegate.results {
             let url = try result.get()
             return CapturedMovie(url: url, duration: duration)

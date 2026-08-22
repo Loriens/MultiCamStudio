@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-nonisolated final class BackMediaRecord {
+final class BackMediaRecord {
     var lensRawValue: String
     var relativePath: String
     var posterRelativePath: String?

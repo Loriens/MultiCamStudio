@@ -43,10 +43,10 @@ struct CameraView: View {
 
     private var header: some View {
         HStack {
-            Text("Multicam")
+            Text("MultiCam Studio")
                 .scaledFont(size: 20, weight: .semibold, relativeTo: .title3)
             Spacer()
-            Button(action: camera.switchCamera) {
+            Button(action: camera.swapLeadingLens) {
                 Image(systemName: "arrow.triangle.2.circlepath.camera")
                     .scaledFont(size: 14)
                     .frame(width: iconButtonSize, height: iconButtonSize)
@@ -57,8 +57,7 @@ struct CameraView: View {
                     )
             }
             .buttonStyle(PressableButtonStyle())
-            .opacity(camera.isBusy ? 0.5 : 1)
-            .disabled(camera.status != .running || camera.isRecording)
+            .disabled(camera.status != .running)
         }
         .padding(.horizontal, 22)
         .frame(minHeight: 48)
@@ -66,14 +65,8 @@ struct CameraView: View {
 
     private var preview: some View {
         ZStack(alignment: .top) {
-            CameraPreview(source: camera.previewSource)
-                .gesture(
-                    SpatialTapGesture()
-                        .onEnded { value in
-                            focusPoint = value.location
-                            camera.focus(at: value.location)
-                        }
-                )
+            surface(.back)
+            surface(.front)
 
             if camera.status != .running {
                 CameraStatusPlate(status: camera.status)
@@ -89,10 +82,40 @@ struct CameraView: View {
         .clipped()
         .overlay { reticle }
         .overlay { flash }
-        .overlay(alignment: .bottomLeading) { reviewPlate }
-        .animation(.easeInOut(duration: 0.25), value: camera.review == nil)
         .overlay(alignment: .top) { Hairline() }
         .overlay(alignment: .bottom) { Hairline() }
+    }
+
+    private func surface(_ lens: CaptureLens) -> some View {
+        let isLeading = camera.leadingLens == lens
+        let source = lens == .back ? camera.backPreviewSource : camera.frontPreviewSource
+        return CameraPreview(source: source)
+            .frame(
+                width: isLeading ? nil : Theme.insetPlateSize.width,
+                height: isLeading ? nil : Theme.insetPlateSize.height
+            )
+            .clipped()
+            .padding(isLeading ? 0 : 5)
+            .background(isLeading ? Color.clear : Theme.raised)
+            .overlay(Rectangle().strokeBorder(isLeading ? Color.clear : Theme.matEdge, lineWidth: 1))
+            .padding(isLeading ? 0 : 14)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: isLeading ? .center : .topLeading
+            )
+            .zIndex(isLeading ? 0 : 1)
+            .gesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        guard isLeading else {
+                            camera.swapLeadingLens()
+                            return
+                        }
+                        focusPoint = value.location
+                        camera.focus(at: value.location, lens: lens)
+                    }
+            )
     }
 
     @ViewBuilder
@@ -115,16 +138,6 @@ struct CameraView: View {
             .fill(Theme.text)
             .opacity(flashOpacity)
             .allowsHitTesting(false)
-    }
-
-    @ViewBuilder
-    private var reviewPlate: some View {
-        if let review = camera.review {
-            CaptureReviewPlate(review: review)
-                .padding(14)
-                .allowsHitTesting(false)
-                .transition(.opacity)
-        }
     }
 
     private var recordingBadge: some View {

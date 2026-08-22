@@ -21,6 +21,8 @@ enum Theme {
     static let textSubdued = text.opacity(0.5)
     static let textFaint = text.opacity(0.4)
 
+    static let insetPlateSize = CGSize(width: 104.0, height: 139.0)
+
     static let space1: CGFloat = 4.6
     static let space2: CGFloat = 9.2
     static let space3: CGFloat = 13.8

@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated enum CaptureLens: String, Sendable {
+enum CaptureLens: String, Sendable {
     case back
     case front
 

@@ -8,7 +8,7 @@
 import AVFoundation
 import Foundation
 
-nonisolated final class MovieRecordingDelegate: NSObject, AVCaptureFileOutputRecordingDelegate {
+final class MovieRecordingDelegate: NSObject, AVCaptureFileOutputRecordingDelegate {
     let results: AsyncStream<Result<URL, Error>>
 
     private let continuation: AsyncStream<Result<URL, Error>>.Continuation

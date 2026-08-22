@@ -8,7 +8,7 @@
 import AVFoundation
 import Foundation
 
-nonisolated final class RotationObserver {
+final class RotationObserver {
     let angles: AsyncStream<RotationAngles>
 
     private let coordinator: AVCaptureDevice.RotationCoordinator

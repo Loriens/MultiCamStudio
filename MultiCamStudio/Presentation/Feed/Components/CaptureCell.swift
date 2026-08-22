@@ -16,6 +16,7 @@ struct CaptureCell: View {
                 FileImage(url: posterURL, maxPixelSize: 512)
                     .aspectRatio(3.0 / 4.0, contentMode: .fit)
             }
+            .overlay(alignment: .topLeading) { frontInset }
             .overlay(alignment: .bottomTrailing) {
                 if let durationLabel = item.capture.durationLabel {
                     Text("▶ \(durationLabel)")
@@ -32,7 +33,7 @@ struct CaptureCell: View {
             HStack {
                 Text(item.plateTitle)
                 Spacer()
-                Text(item.capture.back.lens.title.uppercased())
+                Text(lensLabel.uppercased())
                     .tracking(1.1)
             }
             .scaledFont(size: 11, relativeTo: .caption)
@@ -42,5 +43,22 @@ struct CaptureCell: View {
 
     private var posterURL: URL {
         item.capture.back.posterURL ?? item.capture.back.url
+    }
+
+    private var lensLabel: String {
+        item.capture.front == nil ? item.capture.back.lens.title : "Both"
+    }
+
+    @ViewBuilder
+    private var frontInset: some View {
+        if let front = item.capture.front {
+            FileImage(url: front.posterURL ?? front.url, maxPixelSize: 256)
+                .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                .frame(width: 30)
+                .padding(2)
+                .background(Theme.raised)
+                .overlay(Rectangle().strokeBorder(Theme.text.opacity(0.28), lineWidth: 1))
+                .padding(9)
+        }
     }
 }

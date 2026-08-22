@@ -7,7 +7,9 @@
 
 import Foundation
 
-nonisolated enum CaptureEvent: Sendable, Equatable {
+enum CaptureEvent: Sendable, Equatable {
     case interrupted
     case resumed
+    case recordingDiscarded
+    case failed
 }

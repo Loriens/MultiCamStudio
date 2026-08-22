@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated enum CaptureStoreError: Error, Sendable {
+enum CaptureStoreError: Error, Sendable {
     case storeUnavailable
     case writeFailed
 }

@@ -6,30 +6,28 @@
 //
 
 import AVFoundation
+import CoreMedia
+import Foundation
 
-nonisolated final class DeviceLookup {
-    private let backCameraDiscoverySession: AVCaptureDevice.DiscoverySession
-    private let frontCameraDiscoverySession: AVCaptureDevice.DiscoverySession
+final class DeviceLookup {
+    private let discoverySession: AVCaptureDevice.DiscoverySession
 
     init() {
-        backCameraDiscoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInDualCamera, .builtInWideAngleCamera],
+        discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .builtInDualCamera, .builtInTrueDepthCamera],
             mediaType: .video,
-            position: .back
-        )
-        frontCameraDiscoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInTrueDepthCamera, .builtInWideAngleCamera],
-            mediaType: .video,
-            position: .front
+            position: .unspecified
         )
     }
-
-    var cameras: [AVCaptureDevice] {
-        [backCameraDiscoverySession.devices.first, frontCameraDiscoverySession.devices.first]
-            .compactMap { $0 }
-    }
-
-    var defaultCamera: AVCaptureDevice? { cameras.first }
 
     var defaultMicrophone: AVCaptureDevice? { AVCaptureDevice.default(for: .audio) }
+
+    func multiCamPair() -> CameraPair? {
+        for set in discoverySession.supportedMultiCamDeviceSets {
+            guard let back = set.first(where: { $0.position == .back }) else { continue }
+            guard let front = set.first(where: { $0.position == .front }) else { continue }
+            return CameraPair(back: back, front: front)
+        }
+        return nil
+    }
 }

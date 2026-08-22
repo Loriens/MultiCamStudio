@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated struct CaptureMedia: Hashable, Sendable {
+struct CaptureMedia: Hashable, Sendable {
     let lens: CaptureLens
     let url: URL
     let posterURL: URL?

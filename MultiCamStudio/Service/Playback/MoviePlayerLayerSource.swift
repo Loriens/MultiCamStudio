@@ -38,6 +38,17 @@ final class MoviePlayerLayerSource: MoviePlaybackSource {
         }
     }
 
+    func pause() {
+        replayTask?.cancel()
+        replayTask = nil
+        player.pause()
+    }
+
+    func resume() {
+        guard player.currentItem != nil else { return }
+        player.play()
+    }
+
     func stop() {
         replayTask?.cancel()
         replayTask = nil

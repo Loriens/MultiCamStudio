@@ -12,6 +12,8 @@ struct CaptureViewerView: View {
 
     @Environment(\.dismiss)
     private var dismiss
+    @Environment(\.scenePhase)
+    private var scenePhase
     @State
     private var isFrontLeading = false
     @ScaledMetric(relativeTo: .body)
@@ -28,6 +30,13 @@ struct CaptureViewerView: View {
         .onChange(of: viewModel.selection, initial: true) {
             isFrontLeading = false
             viewModel.showPlayback()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                viewModel.resumePlayback()
+            } else {
+                viewModel.pausePlayback()
+            }
         }
         .onDisappear { viewModel.stopPlayback() }
     }
@@ -73,69 +82,66 @@ struct CaptureViewerView: View {
 
     private var plate: some View {
         PlateMat(inset: 6) {
-            media(isLeading: true)
-                .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                .overlay(alignment: .topLeading) { inset }
+            ZStack(alignment: .topLeading) {
+                surface(.back)
+                surface(.front)
+            }
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
         }
         .padding(.horizontal, 22)
     }
 
-    @ViewBuilder
-    private var inset: some View {
-        if hasFrontMedia {
-            Button {
+    private func surface(_ lens: CaptureLens) -> some View {
+        let isLeading = (lens == .front) == isFrontLeading
+        return media(for: lens)
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .frame(width: isLeading ? nil : 80)
+            .padding(isLeading ? 0 : 4)
+            .background(isLeading ? Color.clear : Theme.raised)
+            .overlay(
+                Rectangle()
+                    .strokeBorder(isLeading ? Color.clear : Theme.text.opacity(0.28), lineWidth: 1)
+            )
+            .padding(isLeading ? 0 : 10)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: isLeading ? .center : .topLeading
+            )
+            .zIndex(isLeading ? 0 : 1)
+            .onTapGesture {
+                guard !isLeading, hasFrontMedia else { return }
                 isFrontLeading.toggle()
-            } label: {
-                insetPlate
             }
-            .buttonStyle(.plain)
-            .padding(10)
-        } else {
-            insetPlate
-                .padding(10)
-        }
     }
 
-    private var insetPlate: some View {
-        media(isLeading: false)
-            .aspectRatio(3.0 / 4.0, contentMode: .fit)
-            .frame(width: 80)
-            .padding(4)
-            .background(Theme.raised)
-            .overlay(Rectangle().strokeBorder(Theme.text.opacity(0.28), lineWidth: 1))
+    @ViewBuilder
+    private func media(for lens: CaptureLens) -> some View {
+        let media = lens == .back ? capture?.back : capture?.front
+        if media?.duration != nil {
+            MoviePlayerView(
+                playerLayer: lens == .back ? viewModel.backPlayerLayer : viewModel.frontPlayerLayer
+            )
+        } else {
+            FileImage(url: media?.url, maxPixelSize: 2048, caption: lens.title.uppercased())
+        }
     }
 
     private var hasFrontMedia: Bool {
         capture?.front != nil
     }
 
-    @ViewBuilder
-    private func media(isLeading: Bool) -> some View {
-        let showsFront = isLeading == isFrontLeading
-        if showsFront {
-            FileImage(url: capture?.front?.url, maxPixelSize: 2048, caption: "FRONT")
-        } else if capture?.isVideo == true {
-            MoviePlayerView(playerLayer: viewModel.playerLayer)
-        } else {
-            FileImage(url: capture?.back.url, maxPixelSize: 2048, caption: "REAR")
-        }
+    private var hasFrontVideo: Bool {
+        capture?.front?.duration != nil
     }
 
     private var footer: some View {
         VStack(spacing: Theme.space3) {
-            if hasFrontMedia {
-                Text("Tap the inset to change which camera leads.")
-                    .scaledFont(size: 12.5)
-                    .italic()
-                    .foregroundStyle(Theme.textSubdued)
-                    .multilineTextAlignment(.center)
-            }
-
             if capture?.isVideo == true {
                 Button {
                     viewModel.replay()
                 } label: {
-                    Text("Replay")
+                    Text(hasFrontVideo ? "Replay both" : "Replay")
                         .scaledFont(size: 13.5, weight: .semibold)
                         .tracking(1.62)
                         .textCase(.uppercase)
@@ -163,6 +169,7 @@ struct CaptureViewerView: View {
             .textCase(.uppercase)
         }
         .padding(.horizontal, 22)
-        .frame(maxHeight: .infinity)
+        .padding(.bottom, Theme.space3)
+        .frame(maxHeight: .infinity, alignment: .bottom)
     }
 }

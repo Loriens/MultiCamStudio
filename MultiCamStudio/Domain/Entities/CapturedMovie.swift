@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated struct CapturedMovie: Sendable {
+struct CapturedMovie: Sendable {
     let url: URL
     let duration: TimeInterval
 }

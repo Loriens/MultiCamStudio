@@ -7,12 +7,12 @@
 
 import Foundation
 
-nonisolated enum CameraError: Error, Sendable {
+enum CameraError: Error, Sendable {
     case cameraUnavailable
+    case multiCamUnsupported
     case notAuthorized
     case addInputFailed
     case addOutputFailed
-    case deviceChangeFailed
     case noPhotoData
     case notRecording
     case recordingFailed

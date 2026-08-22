@@ -20,12 +20,15 @@ struct FeedView: View {
         VStack(spacing: 0) {
             header
 
-            if viewModel.captures.isEmpty {
+            if !viewModel.isLoaded {
+                Spacer()
+            } else if viewModel.captures.isEmpty {
                 emptySheet
             } else {
                 grid
             }
         }
+        .task { await viewModel.start() }
         .foregroundStyle(Theme.text)
         .background(Theme.surface.ignoresSafeArea())
         .fullScreenCover(isPresented: $viewModel.isViewerPresented) {

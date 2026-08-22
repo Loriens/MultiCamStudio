@@ -7,10 +7,11 @@
 
 import Foundation
 
+@MainActor
 protocol CaptureStore: AnyObject {
     nonisolated var changes: AsyncStream<[Capture]> { get }
 
     func loadCaptures() async throws -> [Capture]
-    func savePhotoCapture(back: CapturedPhoto, lens: CaptureLens) async throws
-    func saveMovieCapture(back: CapturedMovie, lens: CaptureLens) async throws
+    func savePhotoCapture(_ photos: CapturedPhotoPair) async throws
+    func saveMovieCapture(_ movies: CapturedMoviePair) async throws
 }

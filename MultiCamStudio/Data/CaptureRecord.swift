@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-nonisolated final class CaptureRecord {
+final class CaptureRecord {
     @Attribute(.unique)
     var id: UUID
     var createdAt: Date

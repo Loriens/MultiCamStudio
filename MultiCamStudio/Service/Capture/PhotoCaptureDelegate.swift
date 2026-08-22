@@ -8,7 +8,7 @@
 import AVFoundation
 import Foundation
 
-nonisolated final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     private let continuation: CheckedContinuation<CapturedPhoto, Error>
     private let fileExtension: String
     private var photoData: Data?

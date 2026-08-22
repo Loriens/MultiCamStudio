@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated enum CaptureMode: CaseIterable, Identifiable, Sendable {
+enum CaptureMode: CaseIterable, Identifiable, Sendable {
     case photo
     case video
 

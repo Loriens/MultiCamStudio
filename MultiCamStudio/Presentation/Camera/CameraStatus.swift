@@ -11,6 +11,7 @@ enum CameraStatus {
     case starting
     case unauthorized
     case unavailable
+    case multiCamUnsupported
     case interrupted
     case failed
     case running

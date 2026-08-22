@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated struct CapturedPhoto: Sendable {
+struct CapturedPhoto: Sendable {
     let data: Data
     let fileExtension: String
 }

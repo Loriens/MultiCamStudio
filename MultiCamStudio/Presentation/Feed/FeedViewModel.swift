@@ -9,24 +9,40 @@ import Foundation
 import Observation
 import QuartzCore
 
+@MainActor
 @Observable
 final class FeedViewModel {
     private(set) var captures: [FeedItem] = []
+    private(set) var isLoaded = false
     private(set) var isStoreUnavailable = false
     var selection: FeedItem?
 
-    var playerLayer: CALayer { playback.playerLayer }
+    var backPlayerLayer: CALayer { backPlayback.playerLayer }
+
+    var frontPlayerLayer: CALayer { frontPlayback.playerLayer }
 
     private let captureStore: any CaptureStore
-    private let playback: any MoviePlaybackSource
+    private let backPlayback: any MoviePlaybackSource
+    private let frontPlayback: any MoviePlaybackSource
     private var storeTask: Task<Void, Never>?
+    private var hasStarted = false
 
-    init(captureStore: any CaptureStore, playback: any MoviePlaybackSource) {
+    init(
+        captureStore: any CaptureStore,
+        backPlayback: any MoviePlaybackSource,
+        frontPlayback: any MoviePlaybackSource
+    ) {
         self.captureStore = captureStore
-        self.playback = playback
+        self.backPlayback = backPlayback
+        self.frontPlayback = frontPlayback
+    }
+
+    func start() async {
+        guard !hasStarted else { return }
+        hasStarted = true
+        await load()
         storeTask = Task { [weak self] in
             guard let self else { return }
-            await load()
             for await captures in captureStore.changes {
                 apply(captures)
             }
@@ -34,7 +50,8 @@ final class FeedViewModel {
     }
 
     var countLabel: String {
-        switch captures.count {
+        guard isLoaded else { return "" }
+        return switch captures.count {
         case 0: "None yet"
         case 1: "1 plate"
         default: "\(captures.count) plates"
@@ -55,19 +72,36 @@ final class FeedViewModel {
     }
 
     func showPlayback() {
-        guard let selection, selection.capture.isVideo else {
-            playback.stop()
+        guard let capture = selection?.capture, capture.isVideo else {
+            stopPlayback()
             return
         }
-        playback.play(selection.capture.back.url)
+        backPlayback.play(capture.back.url)
+        if let front = capture.front, front.duration != nil {
+            frontPlayback.play(front.url)
+        } else {
+            frontPlayback.stop()
+        }
     }
 
     func replay() {
-        playback.replay()
+        backPlayback.replay()
+        frontPlayback.replay()
+    }
+
+    func pausePlayback() {
+        backPlayback.pause()
+        frontPlayback.pause()
+    }
+
+    func resumePlayback() {
+        backPlayback.resume()
+        frontPlayback.resume()
     }
 
     func stopPlayback() {
-        playback.stop()
+        backPlayback.stop()
+        frontPlayback.stop()
     }
 
     private func load() async {
@@ -76,6 +110,7 @@ final class FeedViewModel {
         } catch {
             isStoreUnavailable = true
         }
+        isLoaded = true
     }
 
     private func apply(_ newCaptures: [Capture]) {

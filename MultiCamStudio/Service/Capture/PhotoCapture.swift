@@ -9,7 +9,7 @@ import AVFoundation
 import CoreGraphics
 import Foundation
 
-nonisolated final class PhotoCapture {
+final class PhotoCapture {
     let output = AVCapturePhotoOutput()
 
     private var activeDelegate: PhotoCaptureDelegate?

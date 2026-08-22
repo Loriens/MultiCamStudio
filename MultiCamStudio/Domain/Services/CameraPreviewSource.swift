@@ -8,6 +8,7 @@
 import CoreGraphics
 import QuartzCore
 
+@MainActor
 protocol CameraPreviewSource: AnyObject {
     var previewLayer: CALayer { get }
 

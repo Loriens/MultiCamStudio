@@ -30,6 +30,7 @@ struct CameraStatusPlate: View {
         case .starting: "Starting camera"
         case .unauthorized: "Camera access is off"
         case .unavailable: "No camera here"
+        case .multiCamUnsupported: "Two cameras needed"
         case .interrupted: "Camera paused"
         case .failed, .running: "Camera didn't start"
         }
@@ -39,7 +40,8 @@ struct CameraStatusPlate: View {
         switch status {
         case .starting: "One moment."
         case .unauthorized: "Turn it on in Settings to see the preview and capture."
-        case .unavailable: "The simulator has no camera. Run on a device to capture."
+        case .unavailable: "No camera is attached. Run on a device to capture."
+        case .multiCamUnsupported: "This device can't run both cameras at once. Run on an iPhone XS or later."
         case .interrupted: "Another app is using the camera."
         case .failed, .running: "Reopen the tab to try again."
         }

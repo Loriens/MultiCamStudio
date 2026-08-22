@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated struct Capture: Identifiable, Hashable, Sendable {
+struct Capture: Identifiable, Hashable, Sendable {
     let id: UUID
     let createdAt: Date
     let back: CaptureMedia

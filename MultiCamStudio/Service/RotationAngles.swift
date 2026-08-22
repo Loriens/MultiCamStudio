@@ -8,7 +8,7 @@
 import AVFoundation
 import CoreGraphics
 
-nonisolated struct RotationAngles: Sendable {
+struct RotationAngles: Sendable {
     let preview: CGFloat
     let capture: CGFloat
 

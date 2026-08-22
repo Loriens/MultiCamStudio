@@ -7,7 +7,6 @@
 
 import CoreGraphics
 import Foundation
-import ImageIO
 import Observation
 
 @MainActor
@@ -17,18 +16,22 @@ final class CameraModel {
     private(set) var mode = CaptureMode.photo
     private(set) var isRecording = false
     private(set) var isBusy = false
-    private(set) var review: CaptureReview?
     private(set) var shutterTapCount = 0
     private(set) var flashCount = 0
 
-    var previewSource: CameraPreviewSource { captureService.previewSource }
+    private(set) var isFrontLeading = false
+
+    var backPreviewSource: CameraPreviewSource { captureService.backPreviewSource }
+
+    var frontPreviewSource: CameraPreviewSource { captureService.frontPreviewSource }
+
+    var leadingLens: CaptureLens { isFrontLeading ? .front : .back }
 
     private let captureService: any CameraCaptureService
     private let captureStore: any CaptureStore
     private var eventTask: Task<Void, Never>?
     private var startTask: Task<Void, Never>?
     private var focusTask: Task<Void, Never>?
-    private var reviewTask: Task<Void, Never>?
 
     init(captureService: any CameraCaptureService, captureStore: any CaptureStore) {
         self.captureService = captureService
@@ -66,14 +69,8 @@ final class CameraModel {
         }
     }
 
-    func switchCamera() {
-        guard !isRecording, !isBusy else { return }
-        isBusy = true
-        Task { [weak self] in
-            guard let self else { return }
-            defer { isBusy = false }
-            try? await captureService.selectNextCamera()
-        }
+    func swapLeadingLens() {
+        isFrontLeading.toggle()
     }
 
     func shutterTapped() {
@@ -84,13 +81,14 @@ final class CameraModel {
         }
     }
 
-    func focus(at point: CGPoint) {
+    func focus(at point: CGPoint, lens: CaptureLens) {
         guard status == .running else { return }
-        let devicePoint = previewSource.devicePoint(for: point)
+        let source = lens == .back ? backPreviewSource : frontPreviewSource
+        let devicePoint = source.devicePoint(for: point)
         focusTask?.cancel()
         focusTask = Task { [weak self] in
             guard let self else { return }
-            await captureService.focusAndExpose(at: devicePoint)
+            await captureService.focusAndExpose(at: devicePoint, lens: lens)
         }
     }
 
@@ -99,6 +97,8 @@ final class CameraModel {
             try await captureService.start(in: mode)
             status = .running
             observeEvents()
+        } catch CameraError.multiCamUnsupported {
+            status = .multiCamUnsupported
         } catch CameraError.cameraUnavailable {
             status = .unavailable
         } catch CameraError.notAuthorized {
@@ -115,14 +115,8 @@ final class CameraModel {
         Task { [weak self] in
             guard let self else { return }
             defer { isBusy = false }
-            do {
-                let photo = try await captureService.capturePhoto()
-                try await captureStore.savePhotoCapture(back: photo, lens: captureService.activeLens())
-                let thumbnail = await Self.makeThumbnail(from: photo.data)
-                show(thumbnail.map(CaptureReview.photo) ?? .failure)
-            } catch {
-                show(.failure)
-            }
+            guard let photos = try? await captureService.capturePhoto() else { return }
+            try? await captureStore.savePhotoCapture(photos)
         }
     }
 
@@ -134,28 +128,16 @@ final class CameraModel {
             defer { isBusy = false }
             do {
                 if isRecording {
-                    let movie = try await captureService.stopRecording()
+                    let movies = try await captureService.stopRecording()
                     isRecording = false
-                    try await captureStore.saveMovieCapture(back: movie, lens: captureService.activeLens())
-                    show(.movie(duration: movie.duration))
+                    try await captureStore.saveMovieCapture(movies)
                 } else {
                     try await captureService.startRecording()
                     isRecording = true
                 }
             } catch {
                 isRecording = false
-                show(.failure)
             }
-        }
-    }
-
-    private func show(_ newReview: CaptureReview) {
-        review = newReview
-        reviewTask?.cancel()
-        reviewTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled, let self else { return }
-            review = nil
         }
     }
 
@@ -167,19 +149,10 @@ final class CameraModel {
                 switch event {
                 case .interrupted: status = .interrupted
                 case .resumed: status = .running
+                case .recordingDiscarded: isRecording = false
+                case .failed: status = .failed
                 }
             }
         }
-    }
-
-    @concurrent
-    private nonisolated static func makeThumbnail(from data: Data) async -> CGImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 512,
-        ]
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 }

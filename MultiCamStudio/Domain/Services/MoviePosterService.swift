@@ -7,6 +7,6 @@
 
 import Foundation
 
-nonisolated protocol MoviePosterService: Actor {
+protocol MoviePosterService: Actor {
     func posterJPEG(for movieURL: URL) async throws -> Data
 }

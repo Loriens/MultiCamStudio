@@ -8,16 +8,15 @@
 import CoreGraphics
 import Foundation
 
-nonisolated protocol CameraCaptureService: Actor {
-    nonisolated var previewSource: CameraPreviewSource { get }
+protocol CameraCaptureService: Actor {
+    nonisolated var backPreviewSource: CameraPreviewSource { get }
+    nonisolated var frontPreviewSource: CameraPreviewSource { get }
     nonisolated var events: AsyncStream<CaptureEvent> { get }
 
     func start(in mode: CaptureMode) async throws
     func setCaptureMode(_ mode: CaptureMode) async throws
-    func selectNextCamera() async throws
-    func activeLens() async -> CaptureLens
-    func focusAndExpose(at devicePoint: CGPoint) async
-    func capturePhoto() async throws -> CapturedPhoto
+    func focusAndExpose(at devicePoint: CGPoint, lens: CaptureLens) async
+    func capturePhoto() async throws -> CapturedPhotoPair
     func startRecording() async throws
-    func stopRecording() async throws -> CapturedMovie
+    func stopRecording() async throws -> CapturedMoviePair
 }

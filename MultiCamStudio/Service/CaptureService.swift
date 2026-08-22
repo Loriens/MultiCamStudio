@@ -7,37 +7,42 @@
 
 import AVFoundation
 import CoreGraphics
+import CoreMedia
 import Foundation
 
 actor CaptureService: CameraCaptureService {
     nonisolated let events: AsyncStream<CaptureEvent>
 
-    nonisolated var previewSource: CameraPreviewSource { previewLayerSource }
+    nonisolated var backPreviewSource: CameraPreviewSource { backPreviewLayerSource }
 
-    private nonisolated(unsafe) let captureSession: AVCaptureSession
-    private let previewLayerSource: CameraPreviewLayerSource
+    nonisolated var frontPreviewSource: CameraPreviewSource { frontPreviewLayerSource }
+
+    private nonisolated(unsafe) let captureSession: AVCaptureMultiCamSession
+    private nonisolated let backPreviewLayerSource: CameraPreviewLayerSource
+    private nonisolated let frontPreviewLayerSource: CameraPreviewLayerSource
     private nonisolated let eventContinuation: AsyncStream<CaptureEvent>.Continuation
-    private let photoCapture = PhotoCapture()
-    private let movieCapture = MovieCapture()
     private let deviceLookup = DeviceLookup()
 
-    private var activeVideoInput: AVCaptureDeviceInput?
-    private var activeAudioInput: AVCaptureDeviceInput?
-    private var rotationTask: Task<Void, Never>?
+    private lazy var backChannel = CameraChannel(lens: .back, previewSource: backPreviewLayerSource)
+    private lazy var frontChannel = CameraChannel(lens: .front, previewSource: frontPreviewLayerSource)
+
+    private var audioInput: AVCaptureDeviceInput?
     private var notificationTask: Task<Void, Never>?
-    private var captureRotationAngle: CGFloat = 90
     private var captureMode = CaptureMode.photo
-    private var lastMovieURL: URL?
+    private var pendingMovieURLs: Set<URL> = []
     private var isSetUp = false
+
+    private var channels: [CameraChannel] { [backChannel, frontChannel] }
 
     @MainActor
     init() {
-        let session = AVCaptureSession()
+        let session = AVCaptureMultiCamSession()
         captureSession = session
-        previewLayerSource = CameraPreviewLayerSource(session: session)
+        backPreviewLayerSource = CameraPreviewLayerSource(session: session, isMirrored: false)
+        frontPreviewLayerSource = CameraPreviewLayerSource(session: session, isMirrored: true)
         let (stream, continuation) = AsyncStream.makeStream(
             of: CaptureEvent.self,
-            bufferingPolicy: .bufferingNewest(1)
+            bufferingPolicy: .unbounded
         )
         events = stream
         eventContinuation = continuation
@@ -45,12 +50,13 @@ actor CaptureService: CameraCaptureService {
 
     func start(in mode: CaptureMode) async throws {
         guard !captureSession.isRunning else { return }
-        guard let camera = deviceLookup.defaultCamera else { throw CameraError.cameraUnavailable }
+        guard AVCaptureMultiCamSession.isMultiCamSupported else { throw CameraError.multiCamUnsupported }
+        guard let cameras = deviceLookup.multiCamPair() else { throw CameraError.cameraUnavailable }
         guard await isAuthorizedForVideo else { throw CameraError.notAuthorized }
 
-        try setUpSession(with: camera)
+        try await setUpSession(with: cameras)
         observeSessionNotifications()
-        await startRotationTracking(for: camera)
+        await startRotationTracking()
         captureSession.startRunning()
         Task(priority: .background) { purgeOrphanedMovies() }
 
@@ -64,117 +70,234 @@ actor CaptureService: CameraCaptureService {
         if mode == .video {
             await addAudioInputIfPermitted()
         }
+        try applyMovieOutputs(for: mode)
+        reduceCostIfNeeded()
+        captureMode = mode
+    }
 
+    private func applyMovieOutputs(for mode: CaptureMode) throws {
         captureSession.beginConfiguration()
         defer { captureSession.commitConfiguration() }
 
         switch mode {
         case .photo:
-            captureSession.sessionPreset = .photo
-            captureSession.removeOutput(movieCapture.output)
+            for channel in channels {
+                captureSession.removeOutput(channel.movieCapture.output)
+            }
         case .video:
-            captureSession.sessionPreset = .high
-            try addOutput(movieCapture.output)
-            movieCapture.setVideoRotationAngle(captureRotationAngle)
-        }
-        captureMode = mode
-    }
-
-    func selectNextCamera() async throws {
-        let cameras = deviceLookup.cameras
-        guard cameras.count > 1, let currentInput = activeVideoInput else {
-            throw CameraError.deviceChangeFailed
-        }
-        let index = cameras.firstIndex(of: currentInput.device) ?? 0
-        let next = cameras[(index + 1) % cameras.count]
-
-        captureSession.beginConfiguration()
-        captureSession.removeInput(currentInput)
-        do {
-            activeVideoInput = try addInput(for: next)
-        } catch {
-            captureSession.addInput(currentInput)
-            captureSession.commitConfiguration()
-            throw CameraError.deviceChangeFailed
-        }
-        captureSession.commitConfiguration()
-
-        await startRotationTracking(for: next)
-    }
-
-    func focusAndExpose(at devicePoint: CGPoint) {
-        guard let device = activeVideoInput?.device else { return }
-        try? lockAndFocus(device, at: devicePoint)
-    }
-
-    func activeLens() -> CaptureLens {
-        activeVideoInput?.device.position == .front ? .front : .back
-    }
-
-    func capturePhoto() async throws -> CapturedPhoto {
-        try await photoCapture.capturePhoto()
-    }
-
-    func startRecording() async throws {
-        let url = try movieCapture.startRecording()
-        replaceLastMovie(with: url)
-    }
-
-    func stopRecording() async throws -> CapturedMovie {
-        try await movieCapture.stopRecording()
-    }
-
-    private func setUpSession(with camera: AVCaptureDevice) throws {
-        guard !isSetUp else { return }
-
-        captureSession.beginConfiguration()
-        defer { captureSession.commitConfiguration() }
-
-        captureSession.sessionPreset = .photo
-        activeVideoInput = try addInput(for: camera)
-        try addOutput(photoCapture.output)
-        photoCapture.prepare()
-        captureMode = .photo
-        isSetUp = true
-    }
-
-    @discardableResult
-    private func addInput(for device: AVCaptureDevice) throws -> AVCaptureDeviceInput {
-        let input = try AVCaptureDeviceInput(device: device)
-        guard captureSession.canAddInput(input) else { throw CameraError.addInputFailed }
-        captureSession.addInput(input)
-        return input
-    }
-
-    private func addOutput(_ output: AVCaptureOutput) throws {
-        guard captureSession.canAddOutput(output) else { throw CameraError.addOutputFailed }
-        captureSession.addOutput(output)
-    }
-
-    private func addAudioInputIfPermitted() async {
-        guard activeAudioInput == nil else { return }
-        guard await isAuthorizedForAudio else { return }
-        guard let microphone = deviceLookup.defaultMicrophone else { return }
-
-        captureSession.beginConfiguration()
-        defer { captureSession.commitConfiguration() }
-        activeAudioInput = try? addInput(for: microphone)
-    }
-
-    private func startRotationTracking(for device: AVCaptureDevice) async {
-        rotationTask?.cancel()
-        let angles = await previewLayerSource.trackRotation(for: device)
-        rotationTask = Task {
-            for await angle in angles {
-                applyCaptureRotation(angle)
+            do {
+                for channel in channels {
+                    guard let videoPort = channel.videoPort else { throw CameraError.addOutputFailed }
+                    try add(channel.movieCapture.output, video: videoPort, audio: channel.audioPort)
+                    channel.movieCapture.setVideoRotationAngle(channel.captureRotationAngle)
+                }
+            } catch {
+                for channel in channels {
+                    captureSession.removeOutput(channel.movieCapture.output)
+                }
+                throw error
             }
         }
     }
 
-    private func applyCaptureRotation(_ angle: CGFloat) {
-        captureRotationAngle = angle
-        photoCapture.setVideoRotationAngle(angle)
-        movieCapture.setVideoRotationAngle(angle)
+    func focusAndExpose(at devicePoint: CGPoint, lens: CaptureLens) {
+        guard let device = channel(for: lens).device else { return }
+        try? lockAndFocus(device, at: devicePoint)
+    }
+
+    func capturePhoto() async throws -> CapturedPhotoPair {
+        let back = try await backChannel.photoCapture.capturePhoto()
+        let front = try? await frontChannel.photoCapture.capturePhoto()
+        return CapturedPhotoPair(back: back, front: front)
+    }
+
+    func startRecording() async throws {
+        discardPendingMovies()
+        let backURL = try backChannel.movieCapture.startRecording()
+        pendingMovieURLs.insert(backURL)
+        if let frontURL = try? frontChannel.movieCapture.startRecording() {
+            pendingMovieURLs.insert(frontURL)
+        }
+    }
+
+    func stopRecording() async throws -> CapturedMoviePair {
+        let backDuration = try backChannel.movieCapture.stop()
+        let frontDuration = try? frontChannel.movieCapture.stop()
+
+        let back = try await backChannel.movieCapture.finishedMovie(duration: backDuration)
+        var front: CapturedMovie?
+        if let frontDuration {
+            front = try? await frontChannel.movieCapture.finishedMovie(duration: frontDuration)
+        }
+        return CapturedMoviePair(back: back, front: front)
+    }
+
+    private func channel(for lens: CaptureLens) -> CameraChannel {
+        lens == .back ? backChannel : frontChannel
+    }
+
+    private func setUpSession(with cameras: CameraPair) async throws {
+        guard !isSetUp else { return }
+
+        do {
+            try await configureGraph(with: cameras)
+        } catch {
+            tearDownGraph()
+            throw error
+        }
+        reduceCostIfNeeded()
+        captureMode = .photo
+        isSetUp = true
+    }
+
+    private func configureGraph(with cameras: CameraPair) async throws {
+        captureSession.beginConfiguration()
+        defer { captureSession.commitConfiguration() }
+
+        for channel in channels {
+            try configure(channel, device: cameras.device(for: channel.lens))
+        }
+        for channel in channels {
+            guard let videoPort = channel.videoPort else { throw CameraError.addInputFailed }
+            try await channel.previewSource.connect(port: videoPort, in: captureSession)
+        }
+    }
+
+    private func tearDownGraph() {
+        captureSession.beginConfiguration()
+        defer { captureSession.commitConfiguration() }
+
+        for connection in captureSession.connections {
+            captureSession.removeConnection(connection)
+        }
+        for output in captureSession.outputs {
+            captureSession.removeOutput(output)
+        }
+        for input in captureSession.inputs {
+            captureSession.removeInput(input)
+        }
+        audioInput = nil
+        for channel in channels {
+            channel.device = nil
+            channel.input = nil
+            channel.videoPort = nil
+            channel.audioPort = nil
+        }
+    }
+
+    private func configure(_ channel: CameraChannel, device: AVCaptureDevice) throws {
+        device.applyBestMultiCamFormat()
+        let input = try AVCaptureDeviceInput(device: device)
+        guard captureSession.canAddInput(input) else { throw CameraError.addInputFailed }
+        captureSession.addInputWithNoConnections(input)
+
+        let videoPorts = input.ports(
+            for: .video,
+            sourceDeviceType: device.deviceType,
+            sourceDevicePosition: device.position
+        )
+        guard let videoPort = videoPorts.first else { throw CameraError.addInputFailed }
+
+        channel.device = device
+        channel.input = input
+        channel.videoPort = videoPort
+
+        try add(channel.photoCapture.output, video: videoPort, audio: nil)
+        channel.photoCapture.prepare()
+    }
+
+    private func add(
+        _ output: AVCaptureOutput,
+        video videoPort: AVCaptureInput.Port,
+        audio audioPort: AVCaptureInput.Port?
+    ) throws {
+        guard captureSession.canAddOutput(output) else { throw CameraError.addOutputFailed }
+        captureSession.addOutputWithNoConnections(output)
+        do {
+            try addConnection(from: videoPort, to: output)
+        } catch {
+            captureSession.removeOutput(output)
+            throw error
+        }
+        if let audioPort {
+            try? addConnection(from: audioPort, to: output)
+        }
+    }
+
+    private func addConnection(from port: AVCaptureInput.Port, to output: AVCaptureOutput) throws {
+        let connection = AVCaptureConnection(inputPorts: [port], output: output)
+        guard captureSession.canAddConnection(connection) else { throw CameraError.addOutputFailed }
+        captureSession.addConnection(connection)
+    }
+
+    private func addAudioInputIfPermitted() async {
+        guard audioInput == nil else { return }
+        guard await isAuthorizedForAudio else { return }
+        guard let microphone = deviceLookup.defaultMicrophone else { return }
+        guard let input = try? AVCaptureDeviceInput(device: microphone) else { return }
+        guard captureSession.canAddInput(input) else { return }
+
+        captureSession.beginConfiguration()
+        defer { captureSession.commitConfiguration() }
+
+        captureSession.addInputWithNoConnections(input)
+        audioInput = input
+        for channel in channels {
+            channel.audioPort =
+                input.ports(
+                    for: .audio,
+                    sourceDeviceType: microphone.deviceType,
+                    sourceDevicePosition: channel.lens == .back ? .back : .front
+                ).first
+        }
+        if backChannel.audioPort == nil {
+            backChannel.audioPort = input.ports.first { $0.mediaType == .audio }
+        }
+    }
+
+    private func reduceCostIfNeeded() {
+        var reduced = true
+        while reduced, captureSession.hardwareCost > 1 || captureSession.systemPressureCost > 1 {
+            reduced =
+                frontChannel.device?.applySmallerMultiCamFormat() == true
+                || backChannel.device?.applySmallerMultiCamFormat() == true
+                || reduceFrameRate()
+        }
+    }
+
+    private func reduceFrameRate() -> Bool {
+        var reduced = false
+        for channel in channels {
+            guard let input = channel.input else { continue }
+            let duration = input.device.activeVideoMinFrameDuration
+            guard duration.value > 0 else { continue }
+            let nextRate = Double(duration.timescale) / Double(duration.value) - 10
+            guard nextRate >= 15 else { continue }
+            guard (try? input.device.lockForConfiguration()) != nil else { continue }
+            input.videoMinFrameDurationOverride = CMTime(value: 1, timescale: CMTimeScale(nextRate))
+            input.device.unlockForConfiguration()
+            reduced = true
+        }
+        return reduced
+    }
+
+    private func startRotationTracking() async {
+        for channel in channels {
+            guard let device = channel.device else { continue }
+            channel.rotationTask?.cancel()
+            let angles = await channel.previewSource.trackRotation(for: device)
+            channel.rotationTask = Task {
+                for await angle in angles {
+                    applyCaptureRotation(angle, to: channel)
+                }
+            }
+        }
+    }
+
+    private func applyCaptureRotation(_ angle: CGFloat, to channel: CameraChannel) {
+        channel.captureRotationAngle = angle
+        channel.photoCapture.setVideoRotationAngle(angle)
+        channel.movieCapture.setVideoRotationAngle(angle)
     }
 
     private func lockAndFocus(_ device: AVCaptureDevice, at devicePoint: CGPoint) throws {
@@ -191,21 +314,30 @@ actor CaptureService: CameraCaptureService {
         }
     }
 
-    private func replaceLastMovie(with url: URL?) {
-        if let previous = lastMovieURL, previous != url {
-            try? FileManager.default.removeItem(at: previous)
+    private func abandonRecording() async {
+        guard channels.contains(where: { $0.movieCapture.hasPendingRecording }) else { return }
+        for channel in channels {
+            await channel.movieCapture.discard()
         }
-        lastMovieURL = url
+        discardPendingMovies()
+        eventContinuation.yield(.recordingDiscarded)
+    }
+
+    private func discardPendingMovies() {
+        for url in pendingMovieURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        pendingMovieURLs.removeAll()
     }
 
     private func purgeOrphanedMovies() {
-        guard !movieCapture.isRecording else { return }
+        guard !channels.contains(where: { $0.movieCapture.isRecording }) else { return }
         let fileManager = FileManager.default
         let contents = try? fileManager.contentsOfDirectory(
             at: .temporaryDirectory,
             includingPropertiesForKeys: nil
         )
-        for url in contents ?? [] where url.pathExtension == "mov" && url != lastMovieURL {
+        for url in contents ?? [] where url.pathExtension == "mov" && !pendingMovieURLs.contains(url) {
             try? fileManager.removeItem(at: url)
         }
     }
@@ -230,8 +362,11 @@ actor CaptureService: CameraCaptureService {
         let blocking = [
             AVCaptureSession.InterruptionReason.videoDeviceInUseByAnotherClient.rawValue,
             AVCaptureSession.InterruptionReason.audioDeviceInUseByAnotherClient.rawValue,
+            AVCaptureSession.InterruptionReason.videoDeviceNotAvailableDueToSystemPressure.rawValue,
         ]
-        for await reason in reasons where blocking.contains(reason) {
+        for await reason in reasons {
+            await abandonRecording()
+            guard blocking.contains(reason) else { continue }
             eventContinuation.yield(.interrupted)
         }
     }
@@ -251,12 +386,17 @@ actor CaptureService: CameraCaptureService {
             .compactMap { notification in
                 (notification.userInfo?[AVCaptureSessionErrorKey] as? AVError)?.code
             }
-        for await code in codes where code == .mediaServicesWereReset {
-            restartAfterReset()
+        for await code in codes {
+            await abandonRecording()
+            recover(from: code)
         }
     }
 
-    private func restartAfterReset() {
+    private func recover(from code: AVError.Code) {
+        guard code == .mediaServicesWereReset else {
+            eventContinuation.yield(.failed)
+            return
+        }
         guard !captureSession.isRunning else { return }
         captureSession.startRunning()
     }

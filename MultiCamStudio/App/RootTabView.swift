@@ -13,13 +13,19 @@ struct RootTabView: View {
     @State
     private var feedViewModel: FeedViewModel
 
-    init() {
-        let captureStore = CaptureRepository(posterService: MoviePosterGenerator())
+    init(dependencies: AppDependencies) {
         _camera = State(
-            initialValue: CameraModel(captureService: CaptureService(), captureStore: captureStore)
+            initialValue: CameraModel(
+                captureService: dependencies.captureService,
+                captureStore: dependencies.captureStore
+            )
         )
         _feedViewModel = State(
-            initialValue: FeedViewModel(captureStore: captureStore, playback: MoviePlayerLayerSource())
+            initialValue: FeedViewModel(
+                captureStore: dependencies.captureStore,
+                backPlayback: dependencies.backPlayback,
+                frontPlayback: dependencies.frontPlayback
+            )
         )
     }
 
@@ -35,6 +41,5 @@ struct RootTabView: View {
                 .toolbarBackground(.visible, for: .tabBar)
         }
         .tint(Theme.text)
-        .preferredColorScheme(.dark)
     }
 }
