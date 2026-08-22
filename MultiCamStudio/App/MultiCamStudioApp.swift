@@ -11,7 +11,7 @@ import SwiftUI
 struct MultiCamStudioApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootTabView()
         }
     }
 }
