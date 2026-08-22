@@ -14,4 +14,5 @@ protocol CaptureStore: AnyObject {
     func loadCaptures() async throws -> [Capture]
     func savePhotoCapture(_ photos: CapturedPhotoPair) async throws
     func saveMovieCapture(_ movies: CapturedMoviePair) async throws
+    func backfillMissingPosters() async
 }

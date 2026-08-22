@@ -50,6 +50,7 @@ final class FeedViewModel {
                 apply(captures)
             }
         }
+        await captureStore.backfillMissingPosters()
     }
 
     var isViewerPresented: Bool {

@@ -15,10 +15,10 @@ final class CaptureRepository: CaptureStore {
     private let container: ModelContainer?
     private let mediaFileStore: MediaFileStore
     private let reader: CaptureReader?
-    private let posterService: any MoviePosterService
+    private let posterService: any PosterService
     private nonisolated let changeContinuation: AsyncStream<[Capture]>.Continuation
 
-    init(posterService: any MoviePosterService, container: ModelContainer?) {
+    init(posterService: any PosterService, container: ModelContainer?) {
         self.posterService = posterService
         self.container = container
         let store = MediaFileStore()
@@ -38,27 +38,24 @@ final class CaptureRepository: CaptureStore {
     }
 
     func savePhotoCapture(_ photos: CapturedPhotoPair) async throws {
-        let backPath = try await mediaFileStore.store(
-            photos.back.data,
-            fileExtension: photos.back.fileExtension
-        )
-        var frontPath: String?
-        if let front = photos.front {
-            frontPath = try? await mediaFileStore.store(front.data, fileExtension: front.fileExtension)
+        let back = try await adopt(photos.back)
+        var front: (path: String, posterPath: String?)?
+        if let photo = photos.front {
+            front = try? await adopt(photo)
         }
         try await insert(
             back: BackMediaRecord(
                 lensRawValue: CaptureLens.back.rawValue,
-                relativePath: backPath,
-                posterRelativePath: nil,
+                relativePath: back.path,
+                posterRelativePath: back.posterPath,
                 startOffset: 0,
                 duration: nil
             ),
-            front: frontPath.map { path in
+            front: front.map { stored in
                 FrontMediaRecord(
                     lensRawValue: CaptureLens.front.rawValue,
-                    relativePath: path,
-                    posterRelativePath: nil,
+                    relativePath: stored.path,
+                    posterRelativePath: stored.posterPath,
                     startOffset: 0,
                     duration: nil
                 )
@@ -92,14 +89,53 @@ final class CaptureRepository: CaptureStore {
         )
     }
 
+    func backfillMissingPosters() async {
+        guard let context = container?.mainContext, let reader else { return }
+
+        let back =
+            ((try? context.fetch(FetchDescriptor<BackMediaRecord>())) ?? [])
+            .filter { $0.posterRelativePath == nil }
+        let front =
+            ((try? context.fetch(FetchDescriptor<FrontMediaRecord>())) ?? [])
+            .filter { $0.posterRelativePath == nil }
+        guard !back.isEmpty || !front.isEmpty else { return }
+
+        for record in back {
+            record.posterRelativePath = await generatedPosterPath(
+                forRelativePath: record.relativePath,
+                isVideo: record.duration != nil
+            )
+        }
+        for record in front {
+            record.posterRelativePath = await generatedPosterPath(
+                forRelativePath: record.relativePath,
+                isVideo: record.duration != nil
+            )
+        }
+
+        try? context.save()
+        guard let refreshed = try? await reader.captures() else { return }
+        changeContinuation.yield(refreshed)
+    }
+
     private func adopt(_ movie: CapturedMovie) async throws -> (path: String, posterPath: String?) {
         let path = try await mediaFileStore.adopt(movieAt: movie.url)
-        let movieURL = mediaFileStore.url(forRelativePath: path)
-        var posterPath: String?
-        if let poster = try? await posterService.posterJPEG(for: movieURL) {
-            posterPath = try? await mediaFileStore.store(poster, fileExtension: "jpg")
-        }
-        return (path, posterPath)
+        return (path, await generatedPosterPath(forRelativePath: path, isVideo: true))
+    }
+
+    private func adopt(_ photo: CapturedPhoto) async throws -> (path: String, posterPath: String?) {
+        let path = try await mediaFileStore.store(photo.data, fileExtension: photo.fileExtension)
+        return (path, await generatedPosterPath(forRelativePath: path, isVideo: false))
+    }
+
+    private func generatedPosterPath(forRelativePath path: String, isVideo: Bool) async -> String? {
+        let url = mediaFileStore.url(forRelativePath: path)
+        let poster =
+            isVideo
+            ? try? await posterService.posterJPEG(for: url)
+            : try? await posterService.posterJPEG(forPhotoAt: url)
+        guard let poster else { return nil }
+        return try? await mediaFileStore.store(poster, fileExtension: "jpg")
     }
 
     private func insert(back: BackMediaRecord, front: FrontMediaRecord?) async throws {

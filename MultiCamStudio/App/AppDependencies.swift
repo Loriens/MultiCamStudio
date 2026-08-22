@@ -42,7 +42,7 @@ final class AppDependencies {
         self.backPlayback = backPlayback
         self.frontPlayback = frontPlayback
         captureStore = CaptureRepository(
-            posterService: MoviePosterGenerator(),
+            posterService: PosterGenerator(),
             container: container
         )
     }
