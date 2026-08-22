@@ -9,13 +9,13 @@ import SwiftUI
 
 struct RootTabView: View {
     @State
-    private var cameraViewModel = CameraViewModel()
+    private var camera = CameraModel(captureService: CaptureService())
     @State
     private var feedViewModel = FeedViewModel()
 
     var body: some View {
         TabView {
-            CameraView(viewModel: cameraViewModel)
+            CameraView(camera: camera)
                 .tabItem { Label("Camera", systemImage: "camera") }
                 .toolbarBackground(Theme.surface, for: .tabBar)
                 .toolbarBackground(.visible, for: .tabBar)

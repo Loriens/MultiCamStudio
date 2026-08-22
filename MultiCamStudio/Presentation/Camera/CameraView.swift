@@ -8,10 +8,16 @@
 import SwiftUI
 
 struct CameraView: View {
-    let viewModel: CameraViewModel
+    let camera: CameraModel
 
+    @Environment(\.scenePhase)
+    private var scenePhase
     @ScaledMetric(relativeTo: .body)
     private var iconButtonSize = 34.0
+    @State
+    private var focusPoint: CGPoint?
+    @State
+    private var flashOpacity = 0.0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +27,18 @@ struct CameraView: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.surface.ignoresSafeArea())
+        .sensoryFeedback(.impact, trigger: camera.shutterTapCount)
+        .task {
+            await camera.start()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await camera.start() }
+        }
+        .onChange(of: camera.flashCount) { _, _ in
+            flashOpacity = 0.85
+            withAnimation(.easeOut(duration: 0.3)) { flashOpacity = 0 }
+        }
     }
 
     private var header: some View {
@@ -28,7 +46,7 @@ struct CameraView: View {
             Text("Multicam")
                 .scaledFont(size: 20, weight: .semibold, relativeTo: .title3)
             Spacer()
-            Button(action: viewModel.toggleLeadingCamera) {
+            Button(action: camera.switchCamera) {
                 Image(systemName: "arrow.triangle.2.circlepath.camera")
                     .scaledFont(size: 14)
                     .frame(width: iconButtonSize, height: iconButtonSize)
@@ -38,33 +56,75 @@ struct CameraView: View {
                             .strokeBorder(Theme.border, lineWidth: 1)
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle())
+            .opacity(camera.isBusy ? 0.5 : 1)
+            .disabled(camera.status != .running || camera.isRecording)
         }
         .padding(.horizontal, 22)
         .frame(minHeight: 48)
     }
 
     private var preview: some View {
-        ZStack(alignment: .topLeading) {
-            PlaceholderPlate(caption: viewModel.isFrontLeading ? "FRONT" : "REAR")
+        ZStack(alignment: .top) {
+            CameraPreview(source: camera.previewSource)
+                .gesture(
+                    SpatialTapGesture()
+                        .onEnded { value in
+                            focusPoint = value.location
+                            camera.focus(at: value.location)
+                        }
+                )
 
-            PlaceholderPlate(caption: viewModel.isFrontLeading ? "REAR" : "FRONT")
-                .frame(width: 104, height: 139)
-                .overlay(Rectangle().strokeBorder(Theme.text.opacity(0.9), lineWidth: 3))
-                .padding(14)
+            if camera.status != .running {
+                CameraStatusPlate(status: camera.status)
+            }
 
-            if viewModel.isRecording {
+            if camera.isRecording {
                 recordingBadge
-                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 14)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.raised)
         .clipped()
+        .overlay { reticle }
+        .overlay { flash }
+        .overlay(alignment: .bottomLeading) { reviewPlate }
+        .animation(.easeInOut(duration: 0.25), value: camera.review == nil)
         .overlay(alignment: .top) { Hairline() }
         .overlay(alignment: .bottom) { Hairline() }
-        .animation(.easeInOut(duration: 0.34), value: viewModel.isFrontLeading)
+    }
+
+    @ViewBuilder
+    private var reticle: some View {
+        if let point = focusPoint {
+            FocusReticle()
+                .position(point)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .task(id: point) {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { focusPoint = nil }
+                }
+        }
+    }
+
+    private var flash: some View {
+        Rectangle()
+            .fill(Theme.text)
+            .opacity(flashOpacity)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var reviewPlate: some View {
+        if let review = camera.review {
+            CaptureReviewPlate(review: review)
+                .padding(14)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
     }
 
     private var recordingBadge: some View {
@@ -96,16 +156,23 @@ struct CameraView: View {
                 RoundedRectangle(cornerRadius: Theme.radiusMedium)
                     .strokeBorder(Theme.border, lineWidth: 1)
             )
+            .opacity(camera.isBusy ? 0.5 : 1)
 
-            shutter
+            ShutterButton(
+                mode: camera.mode,
+                isRecording: camera.isRecording,
+                isBusy: camera.isBusy,
+                action: camera.shutterTapped
+            )
+            .disabled(camera.status != .running)
         }
         .padding(.vertical, 22)
     }
 
     private func modeButton(_ mode: CaptureMode) -> some View {
-        let isSelected = viewModel.mode == mode
+        let isSelected = camera.mode == mode
         return Button {
-            viewModel.selectMode(mode)
+            camera.selectMode(mode)
         } label: {
             Text(mode.title.uppercased())
                 .scaledFont(size: 10.5, weight: .semibold, relativeTo: .caption)
@@ -115,23 +182,7 @@ struct CameraView: View {
                 .padding(.vertical, 5)
                 .background(isSelected ? Theme.text.opacity(0.16) : Color.clear)
         }
-        .buttonStyle(.plain)
-    }
-
-    private var shutter: some View {
-        let core = RoundedRectangle(cornerRadius: viewModel.isRecording ? Theme.radiusSmall : 28)
-        return Button(action: viewModel.shutterTapped) {
-            ZStack {
-                Circle()
-                    .strokeBorder(Theme.text.opacity(0.24), lineWidth: 1.5)
-                core
-                    .fill(viewModel.isRecording ? Theme.text : Color.clear)
-                    .overlay(core.strokeBorder(Theme.text, lineWidth: 1))
-                    .padding(viewModel.isRecording ? 24 : 12)
-            }
-            .frame(width: 80, height: 80)
-        }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.25), value: viewModel.isRecording)
+        .buttonStyle(PressableButtonStyle())
+        .disabled(camera.isRecording)
     }
 }

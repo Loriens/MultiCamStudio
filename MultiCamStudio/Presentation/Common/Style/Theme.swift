@@ -12,6 +12,7 @@ enum Theme {
     static let raised = Color(red: 45 / 255, green: 43 / 255, blue: 43 / 255)
     static let stripe = Color(red: 58 / 255, green: 56 / 255, blue: 56 / 255)
     static let text = Color(red: 243 / 255, green: 242 / 255, blue: 242 / 255)
+    static let record = Color(red: 196 / 255, green: 62 / 255, blue: 48 / 255)
 
     static let divider = text.opacity(0.14)
     static let matEdge = text.opacity(0.16)
